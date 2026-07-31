@@ -8,7 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/4.0.1/pptxgen.bundle.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js"></script>
 <style>
   :root{
     --paper:#F1F7FC; --paper-alt:#E6F1FA; --ink:#1E2438; --ink-soft:#565D74;
@@ -507,6 +507,7 @@ function colorizeActivityTableHeader(xml) {
 }
 
 async function generateCategoryDocx(catName, sessionsForCat, cantidad, impactos, mesLabel, campanas, campanaBreakdown) {
+  await ensureJSZip();
 
   const b64 = TEMPLATES_B64[catName];
   if (!b64) throw new Error('No hay plantilla cargada para ' + catName);
@@ -538,6 +539,7 @@ async function generateCategoryDocx(catName, sessionsForCat, cantidad, impactos,
 
 /* ============ Libro de Excel ============ */
 async function generateExcelWorkbook(computed, mesLabel, suggestedCalendar, nextMesLabel) {
+  await ensureExcelJS();
   const wb = new ExcelJS.Workbook();
   const INK = 'FF1E2438', AMBER = 'FFC8933E', WHITE = 'FFFFFFFF', PAPER = 'FFF2EFE6', GREEN = 'FFA9D8B8', YELLOW = 'FFFCE38A', RED = 'FFF2A19A';
 
@@ -660,6 +662,59 @@ async function generateExcelWorkbook(computed, mesLabel, suggestedCalendar, next
   return new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
 }
 
+/* ============ Carga robusta de librerías (con respaldo si el CDN falla) ============ */
+function loadScriptTag(url) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = url;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('No se pudo cargar ' + url));
+    document.head.appendChild(s);
+  });
+}
+async function ensureLib(checkFn, urls, libName) {
+  if (checkFn()) return;
+  for (const url of urls) {
+    try {
+      await loadScriptTag(url);
+      if (checkFn()) return;
+    } catch (e) { /* intentar con la siguiente fuente */ }
+  }
+  throw new Error(`No se pudo cargar ${libName}. Revisa tu conexión a internet e intenta de nuevo.`);
+}
+async function ensurePptxGenJS() {
+  await ensureLib(
+    () => typeof PptxGenJS !== 'undefined',
+    [
+      'https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js',
+      'https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js',
+      'https://unpkg.com/pptxgenjs@3.12.0/dist/pptxgen.bundle.js',
+    ],
+    'PptxGenJS'
+  );
+}
+async function ensureJSZip() {
+  await ensureLib(
+    () => typeof JSZip !== 'undefined',
+    [
+      'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',
+      'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js',
+    ],
+    'JSZip'
+  );
+}
+async function ensureExcelJS() {
+  await ensureLib(
+    () => typeof ExcelJS !== 'undefined',
+    [
+      'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js',
+      'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js',
+    ],
+    'ExcelJS'
+  );
+}
+
+
 /* ============ Saneamiento del PPTX ============
    pptxgenjs (build usada aquí) declara en [Content_Types].xml un slideMaster
    "fantasma" por cada slide adicional que en realidad nunca se escribe en el
@@ -667,6 +722,7 @@ async function generateExcelWorkbook(computed, mesLabel, suggestedCalendar, next
    como archivo corrupto. Esta función limpia esas referencias colgantes
    antes de entregar el archivo. */
 async function sanitizePptxBlob(blob) {
+  await ensureJSZip();
   const arrBuf = await blob.arrayBuffer();
   const zip = await JSZip.loadAsync(arrBuf);
   let ctXml = await zip.file('[Content_Types].xml').async('string');
@@ -680,6 +736,7 @@ async function sanitizePptxBlob(blob) {
 const PPT_PURPLE = '8051FF', PPT_BLACK = '000000', PPT_ORANGE = 'FF5B01', PPT_GREY = 'E6E6E5', PPT_WHITE = 'FFFFFF';
 
 async function generatePptx(computed, mesLabel, suggestedCalendar, nextMesLabel) {
+  await ensurePptxGenJS();
   const pptx = new PptxGenJS();
   pptx.defineLayout({ name: 'WIDE', width: 13.33, height: 7.5 });
   pptx.layout = 'WIDE';
@@ -894,11 +951,7 @@ document.getElementById('procesarBtn').addEventListener('click', () => {
     html += `<div class="cat-card"><div class="name">${cat}</div><div class="n">${d.cantidad}</div><div class="detail">${d.sesiones.length} sesiones agrupadas · ${d.impactosUnicos} impactos únicos</div></div>`;
   }
   html += `</div>`;
-  html += `<div class="ok-box">
-    <div>📄 Tu Excel traía <b>${rows.length} filas</b> (cada fila = 1 persona en 1 actividad).</div>
-    <div>🗑️ De esas, <b>${computed.duplicateCount}</b> estaban repetidas exactamente igual, así que no se contaron dos veces.</div>
-    <div>👤 En total, <b>${computed.distinctAllCount} personas diferentes</b> participaron en al menos una actividad este mes — a eso le llamamos "impactos únicos".</div>
-  </div>`;
+  html += `<div class="ok-box">Tu Excel tenía ${rows.length} filas. En total, ${computed.distinctAllCount} personas participaron en al menos una actividad este mes.</div>`;
   html += `<div class="ok-box">Campañas detectadas: <b>${computed.campanas.join(', ')}</b>${computed.campanas.length > 1 ? ' — cada informe agrupa correctamente por su propia campaña.' : ' (agrega una columna CAMPAÑA en tus datos si necesitas más de una).'}</div>`;
   if (computed.unknownCats.length) {
     html += `<div class="warn-box">Categorías sin plantilla conocida (no se generará informe Word para estas, pero sí quedan en el Excel): ${computed.unknownCats.join(', ')}</div>`;
