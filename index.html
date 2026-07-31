@@ -11,9 +11,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js"></script>
 <style>
   :root{
-    --paper:#EEF0F3; --paper-alt:#E4E7EC; --ink:#1E2438; --ink-soft:#565D74;
-    --line:#C9CDD8; --amber:#C8933E; --amber-deep:#A6752A; --teal:#2B6E68;
-    --red:#B4483C; --white:#FBFAF8; --radius:2px;
+    --paper:#FDF2F6; --paper-alt:#FBE4ED; --ink:#4A2B3D; --ink-soft:#8C6478;
+    --line:#F2D3E0; --amber:#E85D8A; --amber-deep:#C93F6C; --teal:#B4638A;
+    --red:#D9527A; --white:#FFFFFF; --radius:2px;
   }
   *{box-sizing:border-box;}
   body{margin:0;background:var(--paper);color:var(--ink);font-family:'IBM Plex Sans',sans-serif;-webkit-font-smoothing:antialiased;}
@@ -32,7 +32,7 @@
   .field{display:flex;flex-direction:column;gap:5px;}
   .field label{font-size:11px;font-family:'IBM Plex Mono',monospace;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em;}
   .field select, .field input{border:1px solid var(--line);padding:9px 10px;font-family:'IBM Plex Sans',sans-serif;font-size:14px;border-radius:var(--radius);background:var(--white);color:var(--ink);}
-  .btn{background:var(--ink);color:var(--white);border:none;padding:12px 20px;font-size:14px;font-weight:500;cursor:pointer;border-radius:var(--radius);}
+  .btn{background:var(--amber);color:var(--white);border:none;padding:12px 20px;font-size:14px;font-weight:500;cursor:pointer;border-radius:var(--radius);}
   .btn:hover{background:var(--amber-deep);}
   .btn:disabled{opacity:.4;cursor:not-allowed;}
   .btn-ghost{background:var(--white);color:var(--ink);border:1px solid var(--line);}
@@ -120,9 +120,9 @@
 
   <div class="step">
     <div class="step-head"><div class="step-num">2</div><h2>Pega los datos del mes</h2></div>
-    <p class="help">Copia directo desde tu Excel (incluyendo el encabezado) y pégalo aquí: FECHA · HORA DE INICIO · HORA DE FINALIZACION · NOMBRE DE LA ACTIVIDAD · CATEGORIA · MODALIDAD · BMS ID</p>
-    <textarea id="rawData" placeholder="FECHA	HORA DE INICIO	HORA DE FINALIZACION	NOMBRE DE LA ACTIVIDAD	CATEGORIA	MODALIDAD	BMS ID
-7/1/2026	8:00 AM	5:00 PM	Joke Day Challenge	Transversal	Virtual	5313637
+    <p class="help">Copia directo desde tu Excel (incluyendo el encabezado) y pégalo aquí: FECHA · HORA DE INICIO · HORA DE FINALIZACION · NOMBRE DE LA ACTIVIDAD · CATEGORIA · MODALIDAD · BMS ID. Si manejas más de una campaña, agrega una octava columna CAMPAÑA — si no la incluyes, se asume "META CO" para todo.</p>
+    <textarea id="rawData" placeholder="FECHA	HORA DE INICIO	HORA DE FINALIZACION	NOMBRE DE LA ACTIVIDAD	CATEGORIA	MODALIDAD	BMS ID	CAMPAÑA
+7/1/2026	8:00 AM	5:00 PM	Joke Day Challenge	Transversal	Virtual	5313637	META CO
 ..."></textarea>
     <button class="btn" id="procesarBtn">Procesar datos</button>
     <div id="procesarMsg"></div>
@@ -238,7 +238,11 @@ function parseRawData(text) {
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
   if (lines.length === 0) return [];
   let startIdx = 0;
-  if (/fecha/i.test(lines[0]) && /categor/i.test(lines[0])) startIdx = 1;
+  let hasCampanaCol = false;
+  if (/fecha/i.test(lines[0]) && /categor/i.test(lines[0])) {
+    startIdx = 1;
+    hasCampanaCol = /campa/i.test(lines[0]);
+  }
   const rows = [];
   for (let i = startIdx; i < lines.length; i++) {
     const cols = lines[i].split('\t').map(c => c.trim());
@@ -251,7 +255,7 @@ function parseRawData(text) {
       categoria: normalizeCategory(cols[4]),
       modalidad: cols[5],
       bmsId: cols[6],
-      campana: 'META CO',
+      campana: (hasCampanaCol && cols[7]) ? cols[7] : 'META CO',
     });
   }
   return rows;
@@ -261,7 +265,7 @@ function parseRawData(text) {
 function computeAll(rows) {
   const seen = new Map();
   const withFlag = rows.map(r => {
-    const key = [r.fecha, r.horaInicio, r.horaFin, r.actividad, r.categoria, r.modalidad, r.bmsId].join('|');
+    const key = [r.fecha, r.horaInicio, r.horaFin, r.actividad, r.categoria, r.modalidad, r.bmsId, r.campana].join('|');
     const count = (seen.get(key) || 0) + 1;
     seen.set(key, count);
     return { ...r, duplicado: count > 1 };
@@ -271,12 +275,12 @@ function computeAll(rows) {
   const duplicateCount = withFlag.length - uniqueRows.length;
   const transversalAll = withFlag.filter(r => r.categoria === 'Transversal');
 
-  // sesiones (agrupadas por fecha+hora inicio+hora fin+actividad+categoria+modalidad)
+  // sesiones (agrupadas por fecha+hora inicio+hora fin+actividad+categoria+modalidad+campaña)
   const sessionMap = new Map();
   for (const r of uniqueRows) {
-    const key = [r.fecha, r.horaInicio, r.horaFin, r.actividad, r.categoria, r.modalidad].join('|');
+    const key = [r.fecha, r.horaInicio, r.horaFin, r.actividad, r.categoria, r.modalidad, r.campana].join('|');
     if (!sessionMap.has(key)) {
-      sessionMap.set(key, { fecha: r.fecha, horaInicio: r.horaInicio, horaFin: r.horaFin, actividad: r.actividad, categoria: r.categoria, modalidad: r.modalidad, campana: 'META CO', cantidad: 0 });
+      sessionMap.set(key, { fecha: r.fecha, horaInicio: r.horaInicio, horaFin: r.horaFin, actividad: r.actividad, categoria: r.categoria, modalidad: r.modalidad, campana: r.campana, cantidad: 0 });
     }
     sessionMap.get(key).cantidad++;
   }
@@ -286,15 +290,27 @@ function computeAll(rows) {
   for (const cat of CANONICAL_CATEGORIES) {
     const sub = uniqueRows.filter(r => r.categoria === cat);
     const distinctIds = new Set(sub.map(r => r.bmsId));
+    const campanasEnCat = [...new Set(sub.map(r => r.campana))];
+    const campanaBreakdown = campanasEnCat.map(camp => {
+      const subCamp = sub.filter(r => r.campana === camp);
+      return {
+        campana: camp,
+        cantidad: subCamp.length,
+        impactosUnicos: new Set(subCamp.map(r => r.bmsId)).size,
+      };
+    });
     byCategory[cat] = {
       cantidad: sub.length,
       impactosUnicos: distinctIds.size,
       sesiones: sessions.filter(s => s.categoria === cat),
+      campanas: campanasEnCat,
+      campanaBreakdown,
     };
   }
 
   const distinctAll = new Set(uniqueRows.map(r => r.bmsId));
   const unknownCats = [...new Set(withFlag.map(r => r.categoria))].filter(c => !CANONICAL_CATEGORIES.includes(c));
+  const campanas = [...new Set(uniqueRows.map(r => r.campana))];
 
   // agregación por nombre de actividad (para resumen PPT)
   const byName = new Map();
@@ -305,7 +321,7 @@ function computeAll(rows) {
 
   return {
     all: withFlag, uniqueRows, duplicateCount, transversalAll, sessions,
-    byCategory, distinctAllCount: distinctAll.size, unknownCats, activitySummary,
+    byCategory, distinctAllCount: distinctAll.size, unknownCats, activitySummary, campanas,
   };
 }
 
@@ -391,7 +407,109 @@ function fillHeaderDate(xml, label) {
   return xml.replace(pattern, label);
 }
 
-async function generateCategoryDocx(catName, sessionsForCat, cantidad, impactos, mesLabel) {
+function fillParticipantes(xml, campanas) {
+  const tRe = /<w:t([^>]*)>([\s\S]*?)<\/w:t>/g;
+  const matches = [...xml.matchAll(tRe)];
+  const idx = matches.findIndex(m => /Participantes/i.test(m[2]));
+  if (idx === -1) return xml;
+  const m = matches[idx];
+  const newText = `Participantes: ${campanas.join(', ')}`;
+  const newTag = `<w:t${m[1]}>${escXml(newText)}</w:t>`;
+  return xml.slice(0, m.index) + newTag + xml.slice(m.index + m[0].length);
+}
+
+function addCampaignBreakdownParagraph(xml, breakdown) {
+  const pRe = /<w:p\b[\s\S]*?<\/w:p>/g;
+  let foundEnd = null;
+  for (const m of xml.matchAll(pRe)) {
+    if (/Participantes/i.test(m[0])) { foundEnd = m.index + m[0].length; break; }
+  }
+  if (foundEnd === null) return xml;
+  const text = breakdown.map(b => `${b.campana}: ${b.cantidad} personas, ${b.impactosUnicos} impactos únicos`).join(' · ');
+  const newPara = `<w:p><w:pPr><w:spacing w:line="240" w:lineRule="auto"/><w:contextualSpacing/><w:rPr><w:i/><w:sz w:val="20"/></w:rPr></w:pPr><w:r><w:rPr><w:i/><w:sz w:val="20"/></w:rPr><w:t xml:space="preserve">Desglose por campaña: ${escXml(text)}</w:t></w:r></w:p>`;
+  return xml.slice(0, foundEnd) + newPara + xml.slice(foundEnd);
+}
+
+/* ============ Recursos, duración y color de encabezado ============ */
+function parseTimeToMinutes(t) {
+  const m = String(t || '').match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+  if (!m) return null;
+  let h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  const ap = m[3].toUpperCase();
+  if (ap === 'PM' && h !== 12) h += 12;
+  if (ap === 'AM' && h === 12) h = 0;
+  return h * 60 + min;
+}
+function sessionDurationMinutes(horaInicio, horaFin) {
+  const a = parseTimeToMinutes(horaInicio), b = parseTimeToMinutes(horaFin);
+  if (a == null || b == null) return null;
+  let diff = b - a;
+  if (diff <= 0) diff += 24 * 60;
+  return diff;
+}
+function formatDuration(mins) {
+  if (mins == null) return null;
+  const h = Math.floor(mins / 60), m = mins % 60;
+  if (h === 0) return `${m} min`;
+  if (m === 0) return `${h} ${h === 1 ? 'Hora' : 'Horas'}`;
+  return `${h}h ${m}min`;
+}
+function computeDuracionTexto(sesiones) {
+  const durations = sesiones.map(s => sessionDurationMinutes(s.horaInicio, s.horaFin)).filter(d => d != null);
+  if (durations.length === 0) return 'Variable según actividad';
+  const min = Math.min(...durations), max = Math.max(...durations);
+  if (min === max) return formatDuration(min);
+  return `Entre ${formatDuration(min)} y ${formatDuration(max)}`;
+}
+function computeRecursos(sesiones) {
+  const modalidades = new Set(sesiones.map(s => (s.modalidad || '').toLowerCase()));
+  const parts = [];
+  if ([...modalidades].some(m => m.includes('virtual'))) parts.push('Microsoft Teams');
+  if ([...modalidades].some(m => m.includes('presencial'))) parts.push('Material y espacio físico designado');
+  if (parts.length === 0) parts.push('Material y espacio físico designado');
+  return parts.join(' / ');
+}
+
+function fillDuracion(xml, text) {
+  const pRe = /<w:p\b[\s\S]*?<\/w:p>/g;
+  let target = null;
+  for (const m of xml.matchAll(pRe)) {
+    const texts = [...m[0].matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g)];
+    if (texts.length && texts[0][1].trim().startsWith('Duración')) { target = { p: m, texts }; break; }
+  }
+  if (!target || target.texts.length < 3) return xml;
+  const valueRun = target.texts[2];
+  const openTagMatch = valueRun[0].match(/^<w:t([^>]*)>/);
+  const openAttrs = openTagMatch ? openTagMatch[1] : '';
+  const newRunXml = `<w:t${openAttrs.includes('xml:space') ? openAttrs : openAttrs + ' xml:space="preserve"'}>${escXml(text)}. </w:t>`;
+  const abs = target.p.index + valueRun.index;
+  return xml.slice(0, abs) + newRunXml + xml.slice(abs + valueRun[0].length);
+}
+
+function fillRecursos(xml, text) {
+  const idx = xml.search(/Recursos utilizados/i);
+  if (idx === -1) return xml;
+  const emptyParaIdx = xml.indexOf('</w:pPr></w:p>', idx);
+  if (emptyParaIdx === -1) return xml;
+  const insertPos = emptyParaIdx + '</w:pPr>'.length;
+  const runXml = `<w:r><w:rPr><w:rFonts w:cstheme="majorHAnsi"/><w:i/></w:rPr><w:t xml:space="preserve">${escXml(text)}</w:t></w:r>`;
+  return xml.slice(0, insertPos) + runXml + xml.slice(insertPos);
+}
+
+function colorizeActivityTableHeader(xml) {
+  const table = findActivityTable(xml);
+  const headerMatch = table.xml.match(/<w:tr\b[\s\S]*?<\/w:tr>/);
+  if (!headerMatch) return xml;
+  let headerXml = headerMatch[0];
+  headerXml = headerXml.replace(/<w:tcMar>/g, '<w:shd w:val="clear" w:color="auto" w:fill="8051FF"/><w:tcMar>');
+  headerXml = headerXml.replace(/w:color w:val="000000"/g, 'w:color w:val="FFFFFF"');
+  const newTableXml = table.xml.slice(0, headerMatch.index) + headerXml + table.xml.slice(headerMatch.index + headerMatch[0].length);
+  return xml.slice(0, table.start) + newTableXml + xml.slice(table.end);
+}
+
+async function generateCategoryDocx(catName, sessionsForCat, cantidad, impactos, mesLabel, campanas, campanaBreakdown) {
+
   const b64 = TEMPLATES_B64[catName];
   if (!b64) throw new Error('No hay plantilla cargada para ' + catName);
   const zip = await JSZip.loadAsync(b64, { base64: true });
@@ -400,13 +518,20 @@ async function generateCategoryDocx(catName, sessionsForCat, cantidad, impactos,
 
   const rowsVals = sessionsForCat.map(s => [s.actividad, s.campana, s.horaInicio, s.horaFin, String(s.cantidad)]);
   xml = fillActivityTable(xml, rowsVals);
+  xml = colorizeActivityTableHeader(xml);
 
   const lastTblEnd = xml.lastIndexOf('</w:tbl>') + '</w:tbl>'.length;
   let head = xml.slice(0, lastTblEnd);
   let tail = xml.slice(lastTblEnd);
   tail = fillMetric(tail, 'Cantidad', cantidad);
   tail = fillMetric(tail, 'Impactos', impactos);
+  tail = fillParticipantes(tail, campanas && campanas.length ? campanas : ['META CO']);
+  if (campanaBreakdown && campanaBreakdown.length > 1) {
+    tail = addCampaignBreakdownParagraph(tail, campanaBreakdown);
+  }
   head = fillHeaderDate(head, mesLabel);
+  head = fillRecursos(head, computeRecursos(sessionsForCat));
+  head = fillDuracion(head, computeDuracionTexto(sessionsForCat));
   xml = head + tail;
 
   zip.file(docPath, xml);
@@ -537,7 +662,23 @@ async function generateExcelWorkbook(computed, mesLabel, suggestedCalendar, next
   return new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
 }
 
-/* ============ PPT (deck ligero, generado desde cero) ============ */
+/* ============ Saneamiento del PPTX ============
+   pptxgenjs (build usada aquí) declara en [Content_Types].xml un slideMaster
+   "fantasma" por cada slide adicional que en realidad nunca se escribe en el
+   paquete. LibreOffice y python-pptx lo toleran, pero PowerPoint lo rechaza
+   como archivo corrupto. Esta función limpia esas referencias colgantes
+   antes de entregar el archivo. */
+async function sanitizePptxBlob(blob) {
+  const arrBuf = await blob.arrayBuffer();
+  const zip = await JSZip.loadAsync(arrBuf);
+  let ctXml = await zip.file('[Content_Types].xml').async('string');
+  const allPaths = new Set(Object.keys(zip.files).map(p => '/' + p));
+  const overrideRe = /<Override PartName="([^"]+)"[^>]*\/>/g;
+  ctXml = ctXml.replace(overrideRe, (full, partName) => (allPaths.has(partName) ? full : ''));
+  zip.file('[Content_Types].xml', ctXml);
+  return zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
+}
+
 const PPT_PURPLE = '8051FF', PPT_BLACK = '000000', PPT_ORANGE = 'FF5B01', PPT_GREY = 'E6E6E5', PPT_WHITE = 'FFFFFF';
 
 async function generatePptx(computed, mesLabel, suggestedCalendar, nextMesLabel) {
@@ -660,7 +801,8 @@ async function generatePptx(computed, mesLabel, suggestedCalendar, nextMesLabel)
     }
   }
 
-  return pptx.write({ outputType: 'blob' });
+  const rawBlob = await pptx.write({ outputType: 'blob' });
+  return sanitizePptxBlob(rawBlob);
 }
 
 /* ============ Vista previa en HTML ============ */
@@ -681,7 +823,8 @@ function renderPreview(computed, mesLabel, suggestedCalendar, nextLabel) {
       html += `<tr><td>${sesn.actividad}</td><td>${sesn.campana}</td><td>${sesn.horaInicio}</td><td>${sesn.horaFin}</td><td>${sesn.cantidad}</td></tr>`;
     }
     html += `</tbody></table>
-      <div class="preview-totals">Cantidad: <b>${d.cantidad}</b> personas &nbsp;·&nbsp; Impactos Únicos: <b>${d.impactosUnicos}</b> personas</div>
+      <div class="preview-totals">Cantidad: <b>${d.cantidad}</b> personas &nbsp;·&nbsp; Impactos Únicos: <b>${d.impactosUnicos}</b> personas &nbsp;·&nbsp; Participantes: <b>${d.campanas.join(', ') || 'META CO'}</b></div>
+      ${d.campanaBreakdown.length > 1 ? `<div class="preview-totals" style="border-top:none;padding-top:0;font-style:italic;">Desglose por campaña: ${d.campanaBreakdown.map(b => `${b.campana} (${b.cantidad} personas, ${b.impactosUnicos} impactos únicos)`).join(' · ')}</div>` : ''}
     </div>`;
   }
 
@@ -754,6 +897,7 @@ document.getElementById('procesarBtn').addEventListener('click', () => {
   }
   html += `</div>`;
   html += `<div class="ok-box">${rows.length} filas leídas · ${computed.duplicateCount} duplicados exactos detectados y excluidos · ${computed.distinctAllCount} personas distintas alcanzadas en el mes.</div>`;
+  html += `<div class="ok-box">Campañas detectadas: <b>${computed.campanas.join(', ')}</b>${computed.campanas.length > 1 ? ' — cada informe agrupa correctamente por su propia campaña.' : ' (agrega una columna CAMPAÑA en tus datos si necesitas más de una).'}</div>`;
   if (computed.unknownCats.length) {
     html += `<div class="warn-box">Categorías sin plantilla conocida (no se generará informe Word para estas, pero sí quedan en el Excel): ${computed.unknownCats.join(', ')}</div>`;
   }
@@ -801,8 +945,8 @@ function buildDownloadList(computed) {
     const d = computed.byCategory[cat];
     catItems.push({
       name: `Reporte_de_actividades_por_enfoque_${cat.replace(/ /g, '_')}_${mesLabel.replace(' ', '_')}.docx`,
-      desc: `1 informe · todas las actividades de "${cat}" del mes juntas · Cantidad ${d.cantidad} · Impactos Únicos ${d.impactosUnicos}`,
-      make: () => generateCategoryDocx(cat, d.sesiones, d.cantidad, d.impactosUnicos, mesLabel),
+      desc: `1 informe · todas las actividades de "${cat}" del mes juntas · Cantidad ${d.cantidad} · Impactos Únicos ${d.impactosUnicos}${d.campanas.length > 1 ? ` · ${d.campanas.length} campañas` : ''}`,
+      make: () => generateCategoryDocx(cat, d.sesiones, d.cantidad, d.impactosUnicos, mesLabel, d.campanas, d.campanaBreakdown),
     });
   }
   const otherItems = [
