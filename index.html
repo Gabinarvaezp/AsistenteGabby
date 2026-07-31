@@ -172,6 +172,19 @@ function toast(msg, isError) {
   toast._t = setTimeout(() => t.classList.remove('show'), 3200);
 }
 
+function parseFechaSortValue(fechaStr) {
+  const m = String(fechaStr || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (!m) return 0;
+  const mo = parseInt(m[1], 10), day = parseInt(m[2], 10), yr = parseInt(m[3], 10);
+  return yr * 10000 + mo * 100 + day;
+}
+function compareFechaHora(a, b) {
+  const fa = parseFechaSortValue(a.fecha), fb = parseFechaSortValue(b.fecha);
+  if (fa !== fb) return fa - fb;
+  const ha = parseTimeToMinutes(a.horaInicio), hb = parseTimeToMinutes(b.horaInicio);
+  return (ha == null ? 0 : ha) - (hb == null ? 0 : hb);
+}
+
 const CANONICAL_CATEGORIES = ['Transversal', 'SPA', 'Happy Time', 'GYM', 'Experiencias Mentales', 'Habilidades Blandas'];
 const MONTH_NAMES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
@@ -282,7 +295,7 @@ function computeAll(rows) {
     }
     sessionMap.get(key).cantidad++;
   }
-  const sessions = [...sessionMap.values()].sort((a, b) => (a.fecha > b.fecha ? 1 : a.fecha < b.fecha ? -1 : 0));
+  const sessions = [...sessionMap.values()].sort(compareFechaHora);
 
   const byCategory = {};
   for (const cat of CANONICAL_CATEGORIES) {
@@ -559,7 +572,7 @@ async function generateExcelWorkbook(computed, mesLabel, suggestedCalendar, next
   const ws1 = wb.addWorksheet('Datos Brutos');
   ws1.addRow(rawHeaders);
   styleHeader(ws1, 1, rawHeaders.length);
-  for (const r of computed.all) {
+  for (const r of [...computed.all].sort(compareFechaHora)) {
     ws1.addRow([r.fecha, r.horaInicio, r.horaFin, r.actividad, r.categoria, r.modalidad, r.bmsId, r.campana, r.duplicado ? 'Duplicado' : 'Único']);
   }
   ws1.columns.forEach((col, i) => { col.width = [11, 12, 12, 28, 20, 12, 10, 10, 11][i] || 12; });
@@ -570,7 +583,7 @@ async function generateExcelWorkbook(computed, mesLabel, suggestedCalendar, next
   const h2 = ['FECHA', 'HORA INICIO', 'HORA FIN', 'NOMBRE ACTIVIDAD', 'CATEGORIA', 'MODALIDAD', 'BMS ID', 'CAMPAÑA'];
   ws2.addRow(h2);
   styleHeader(ws2, 1, h2.length);
-  for (const r of computed.uniqueRows) {
+  for (const r of [...computed.uniqueRows].sort(compareFechaHora)) {
     ws2.addRow([r.fecha, r.horaInicio, r.horaFin, r.actividad, r.categoria, r.modalidad, r.bmsId, r.campana]);
   }
   ws2.columns.forEach((col, i) => { col.width = [11, 12, 12, 28, 20, 12, 10, 10][i] || 12; });
@@ -580,7 +593,7 @@ async function generateExcelWorkbook(computed, mesLabel, suggestedCalendar, next
   const ws3 = wb.addWorksheet('Todos los Transversales');
   ws3.addRow(h2);
   styleHeader(ws3, 1, h2.length);
-  for (const r of computed.transversalAll) {
+  for (const r of [...computed.transversalAll].sort(compareFechaHora)) {
     ws3.addRow([r.fecha, r.horaInicio, r.horaFin, r.actividad, r.categoria, r.modalidad, r.bmsId, r.campana]);
   }
   ws3.columns.forEach((col, i) => { col.width = [11, 12, 12, 28, 20, 12, 10, 10][i] || 12; });
@@ -733,6 +746,17 @@ async function sanitizePptxBlob(blob) {
   return zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
 }
 
+function buildCalendarView(sessions) {
+  const seen = new Map();
+  for (const s of sessions) {
+    const key = s.fecha + '|' + s.actividad;
+    if (!seen.has(key)) {
+      seen.set(key, { fecha: s.fecha, actividad: s.actividad, categoria: s.categoria, modalidad: s.modalidad });
+    }
+  }
+  return [...seen.values()].sort(compareFechaHora);
+}
+
 const PPT_PURPLE = '8051FF', PPT_BLACK = '000000', PPT_ORANGE = 'FF5B01', PPT_GREY = 'E6E6E5', PPT_WHITE = 'FFFFFF';
 
 async function generatePptx(computed, mesLabel, suggestedCalendar, nextMesLabel) {
@@ -810,12 +834,12 @@ async function generatePptx(computed, mesLabel, suggestedCalendar, nextMesLabel)
     { text: 'Categoría', options: { bold: true, color: PPT_WHITE, fill: { color: PPT_BLACK }, fontSize: 11 } },
     { text: 'Modalidad', options: { bold: true, color: PPT_WHITE, fill: { color: PPT_BLACK }, fontSize: 11 } },
   ]];
-  for (const sesn of computed.sessions) {
+  for (const item of buildCalendarView(computed.sessions)) {
     calRows.push([
-      { text: sesn.fecha, options: { fontSize: 10 } },
-      { text: sesn.actividad, options: { fontSize: 10 } },
-      { text: sesn.categoria, options: { fontSize: 10 } },
-      { text: sesn.modalidad, options: { fontSize: 10 } },
+      { text: item.fecha, options: { fontSize: 10 } },
+      { text: item.actividad, options: { fontSize: 10 } },
+      { text: item.categoria, options: { fontSize: 10 } },
+      { text: item.modalidad, options: { fontSize: 10 } },
     ]);
   }
   s.addTable(calRows, { x: 0.6, y: 1.2, w: 12.1, colW: [2, 5.1, 3, 2], border: { type: 'solid', color: 'C9CDD8', pt: 0.5 }, autoPage: true, autoPageLineWeight: 0.5 });
