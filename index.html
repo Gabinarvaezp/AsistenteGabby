@@ -8,11 +8,11 @@
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/4.0.1/pptxgen.bundle.js"></script>
 <style>
   :root{
-    --paper:#FDF2F6; --paper-alt:#FBE4ED; --ink:#4A2B3D; --ink-soft:#8C6478;
-    --line:#F2D3E0; --amber:#E85D8A; --amber-deep:#C93F6C; --teal:#B4638A;
+    --paper:#EEF0F3; --paper-alt:#E4E7EC; --ink:#1E2438; --ink-soft:#565D74;
+    --line:#C9CDD8; --amber:#E85D8A; --amber-deep:#C93F6C; --teal:#B4638A;
     --red:#D9527A; --white:#FFFFFF; --radius:2px;
   }
   *{box-sizing:border-box;}
@@ -20,7 +20,8 @@
   .wrap{max-width:920px;margin:0 auto;padding:40px 28px 80px 28px;}
   .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--amber-deep);}
   h1{font-family:'Newsreader',serif;font-weight:500;font-size:36px;margin:6px 0 6px 0;}
-  .sub{color:var(--ink-soft);font-size:14px;margin-bottom:36px;max-width:640px;line-height:1.5;}
+  .sub{color:var(--ink-soft);font-size:14px;margin-bottom:12px;max-width:640px;line-height:1.5;}
+  .credit{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.06em;color:var(--amber-deep);margin-bottom:36px;}
   .step{background:var(--white);border:1px solid var(--line);border-radius:var(--radius);padding:24px 26px;margin-bottom:20px;}
   .step-head{display:flex;align-items:baseline;gap:12px;margin-bottom:14px;}
   .step-num{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--amber-deep);border:1px solid var(--amber);border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
@@ -48,6 +49,7 @@
   .cat-card .detail{font-size:11px;color:var(--ink-soft);margin-top:2px;}
   .warn-box{background:#FBEFE9;border:1px solid #E3B99B;border-radius:var(--radius);padding:12px 14px;font-size:13px;color:#7A3E1D;margin-top:10px;}
   .ok-box{background:#EAF3EF;border:1px solid #A9D8B8;border-radius:var(--radius);padding:12px 14px;font-size:13px;color:#1F5C3F;margin-top:10px;}
+  .ok-box div + div{margin-top:5px;}
 
   .downloads{display:none;}
   .downloads.show{display:block;}
@@ -100,9 +102,10 @@
 </head>
 <body>
 <div class="wrap">
-  <div class="eyebrow">Emotions &amp; Experiences · Automatizado</div>
+  <div class="eyebrow">Gabby E&amp;E</div>
   <h1>Generador de Informes Mensuales</h1>
-  <p class="sub">Pega el Excel del mes y la app arma: 1 informe Word por categoría, el libro de Excel completo, la PPT del mes y el calendario de actividades sugeridas para el mes siguiente — todo con vista previa antes de descargar. Es tu asistente de reportería, no solo un generador.</p>
+  <p class="sub">Pega el Excel del mes y la app arma: 1 informe Word por categoría, el libro de Excel completo, la PPT del mes y el calendario de actividades sugeridas para el mes siguiente — todo con vista previa antes de descargar. </p>
+  <p class="credit">✦ Asistente creado por Gabby ✦</p>
 
   <div class="step">
     <div class="step-head"><div class="step-num">1</div><h2>Mes del informe</h2></div>
@@ -502,8 +505,8 @@ function colorizeActivityTableHeader(xml) {
   const headerMatch = table.xml.match(/<w:tr\b[\s\S]*?<\/w:tr>/);
   if (!headerMatch) return xml;
   let headerXml = headerMatch[0];
-  headerXml = headerXml.replace(/<w:tcMar>/g, '<w:shd w:val="clear" w:color="auto" w:fill="8051FF"/><w:tcMar>');
-  headerXml = headerXml.replace(/w:color w:val="000000"/g, 'w:color w:val="FFFFFF"');
+  headerXml = headerXml.replace(/<w:tcMar>/g, '<w:shd w:val="clear" w:color="auto" w:fill="E4D9F7"/><w:tcMar>');
+  headerXml = headerXml.replace(/w:color w:val="000000"/g, 'w:color w:val="4A2B3D"');
   const newTableXml = table.xml.slice(0, headerMatch.index) + headerXml + table.xml.slice(headerMatch.index + headerMatch[0].length);
   return xml.slice(0, table.start) + newTableXml + xml.slice(table.end);
 }
@@ -896,7 +899,11 @@ document.getElementById('procesarBtn').addEventListener('click', () => {
     html += `<div class="cat-card"><div class="name">${cat}</div><div class="n">${d.cantidad}</div><div class="detail">${d.sesiones.length} sesiones agrupadas · ${d.impactosUnicos} impactos únicos</div></div>`;
   }
   html += `</div>`;
-  html += `<div class="ok-box">${rows.length} filas leídas · ${computed.duplicateCount} duplicados exactos detectados y excluidos · ${computed.distinctAllCount} personas distintas alcanzadas en el mes.</div>`;
+  html += `<div class="ok-box">
+    <div>📄 Tu Excel traía <b>${rows.length} filas</b> (cada fila = 1 persona en 1 actividad).</div>
+    <div>🗑️ De esas, <b>${computed.duplicateCount}</b> estaban repetidas exactamente igual, así que no se contaron dos veces.</div>
+    <div>👤 En total, <b>${computed.distinctAllCount} personas diferentes</b> participaron en al menos una actividad este mes — a eso le llamamos "impactos únicos".</div>
+  </div>`;
   html += `<div class="ok-box">Campañas detectadas: <b>${computed.campanas.join(', ')}</b>${computed.campanas.length > 1 ? ' — cada informe agrupa correctamente por su propia campaña.' : ' (agrega una columna CAMPAÑA en tus datos si necesitas más de una).'}</div>`;
   if (computed.unknownCats.length) {
     html += `<div class="warn-box">Categorías sin plantilla conocida (no se generará informe Word para estas, pero sí quedan en el Excel): ${computed.unknownCats.join(', ')}</div>`;
@@ -938,25 +945,26 @@ function buildDownloadList(computed) {
   const dlList = document.getElementById('dlList');
   dlList.innerHTML = '';
   lastFiles = [];
+  const mesSolo = document.getElementById('mesSelect').value;
 
   const catItems = [];
   for (const cat of CANONICAL_CATEGORIES) {
     if (!TEMPLATES_B64[cat]) continue;
     const d = computed.byCategory[cat];
     catItems.push({
-      name: `Reporte_de_actividades_por_enfoque_${cat.replace(/ /g, '_')}_${mesLabel.replace(' ', '_')}.docx`,
+      name: `Informe_${cat.replace(/ /g, '_')}_${mesSolo}.docx`,
       desc: `1 informe · todas las actividades de "${cat}" del mes juntas · Cantidad ${d.cantidad} · Impactos Únicos ${d.impactosUnicos}${d.campanas.length > 1 ? ` · ${d.campanas.length} campañas` : ''}`,
       make: () => generateCategoryDocx(cat, d.sesiones, d.cantidad, d.impactosUnicos, mesLabel, d.campanas, d.campanaBreakdown),
     });
   }
   const otherItems = [
     {
-      name: `Bitacora_Actividades_EE_${mesLabel.replace(' ', '_')}.xlsx`,
+      name: `Bitacora_${mesSolo}.xlsx`,
       desc: `Excel · datos brutos, únicos, transversales, indicadores y calendario sugerido de ${nextLabel}`,
       make: () => generateExcelWorkbook(computed, mesLabel, lastSuggestedCalendar, nextLabel),
     },
     {
-      name: `Informe_${mesLabel.replace(' ', '_')}.pptx`,
+      name: `PPT_${mesSolo}.pptx`,
       desc: `PPT · portada, resumen, impactos, gráfico, calendario sugerido de ${nextLabel} y espacio para fotos`,
       make: () => generatePptx(computed, mesLabel, lastSuggestedCalendar, nextLabel),
     },
@@ -1017,7 +1025,7 @@ document.getElementById('dlAllBtn').addEventListener('click', async () => {
       zip.file(item.name, arrBuf);
     }
     const zipBlob = await zip.generateAsync({ type: 'blob' });
-    downloadBlob(zipBlob, `Informes_${currentMesLabel().replace(' ', '_')}.zip`);
+    downloadBlob(zipBlob, `Informes_${document.getElementById('mesSelect').value}.zip`);
     toast('Todo listo, revisa tus descargas.');
   } catch (e) {
     toast('Error generando el paquete: ' + e.message, true);
