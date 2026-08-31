@@ -73,6 +73,12 @@
   .photo-thumb{position:relative;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;aspect-ratio:4/3;background:var(--paper-alt);}
   .photo-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
   .photo-thumb .photo-remove{position:absolute;top:4px;right:4px;background:rgba(30,36,56,0.75);color:#fff;border:none;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:14px;line-height:1;}
+  .photo-badge{position:absolute;top:4px;left:4px;background:var(--amber);color:#fff;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:3px 7px;border-radius:10px;z-index:1;}
+  .photo-unused{opacity:.45;}
+  .photo-unused .photo-badge{background:var(--ink-soft);}
+  .photo-controls{position:absolute;bottom:4px;left:4px;right:4px;display:flex;gap:4px;justify-content:center;}
+  .photo-controls button{background:rgba(30,36,56,0.75);color:#fff;border:none;border-radius:4px;width:22px;height:20px;cursor:pointer;font-size:11px;line-height:1;}
+  .photo-controls button:disabled{opacity:.3;cursor:not-allowed;}
   .photos-grid .empty{grid-column:1/-1;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink-soft);padding:20px;border:1px dashed var(--line);text-align:center;border-radius:var(--radius);}
   #emailTextarea{width:100%;font-family:'IBM Plex Sans',sans-serif;font-size:13px;line-height:1.6;padding:14px;border:1px solid var(--line);border-radius:var(--radius);background:var(--white);color:var(--ink);resize:vertical;}
 
@@ -140,7 +146,7 @@
 
   <div class="step">
     <div class="step-head"><div class="step-num">3</div><h2>Fotos del mes (opcional)</h2></div>
-    <p class="help">Sube las fotos que quieras que salgan en la PPT — se acomodan solas en la cuadrícula de "Fotos", igual que en tu plantilla. Si no subes ninguna, la PPT trae los recuadros marcados para que las pegues tú después.</p>
+    <p class="help">Sube hasta 5 fotos — tu plantilla trae 5 marcos con cinta en la slide de Fotos, y se acomodan solas ahí, en el orden que las subas (puedes reordenarlas abajo). Si no subes ninguna, la PPT queda con los marcos vacíos para que las pegues tú después.</p>
     <input type="file" id="photosInput" accept="image/*" multiple>
     <div id="photosPreview" class="photos-grid"></div>
   </div>
@@ -1048,8 +1054,8 @@ async function generateExcelWorkbook(computed, mesLabel, suggestedCalendar, next
   ws1.columns.forEach((col, i) => { col.width = [11, 12, 12, 28, 20, 12, 10, 10, 11][i] || 12; });
   ws1.views = [{ state: 'frozen', ySplit: 1 }];
 
-  // Hoja 2: Únicos y Transversales
-  const ws2 = wb.addWorksheet('Únicos y Transversales');
+  // Hoja 2: Únicos (todas las categorías juntas, incluye Transversal, sin duplicados)
+  const ws2 = wb.addWorksheet('Únicos');
   const h2 = ['FECHA', 'HORA INICIO', 'HORA FIN', 'NOMBRE ACTIVIDAD', 'CATEGORIA', 'MODALIDAD', 'BMS ID', 'CAMPAÑA'];
   ws2.addRow(h2);
   styleHeader(ws2, 1, h2.length);
@@ -1059,15 +1065,17 @@ async function generateExcelWorkbook(computed, mesLabel, suggestedCalendar, next
   ws2.columns.forEach((col, i) => { col.width = [11, 12, 12, 28, 20, 12, 10, 10][i] || 12; });
   ws2.views = [{ state: 'frozen', ySplit: 1 }];
 
-  // Hoja 3: Todos los Transversales
+  // Hoja 3: Todos los Transversales (con duplicados, y columna OTRA propia de este formato)
   const ws3 = wb.addWorksheet('Todos los Transversales');
-  ws3.addRow(h2);
-  styleHeader(ws3, 1, h2.length);
+  const h3 = ['FECHA', 'HORA INICIO', 'HORA FIN', 'NOMBRE ACTIVIDAD', 'OTRA', 'CATEGORIA', 'MODALIDAD', 'BMS ID', 'CAMPAÑA'];
+  ws3.addRow(h3);
+  styleHeader(ws3, 1, h3.length);
   for (const r of [...computed.transversalAll].sort(compareFechaHora)) {
-    ws3.addRow([r.fecha, r.horaInicio, r.horaFin, r.actividad, r.categoria, r.modalidad, r.bmsId, r.campana]);
+    ws3.addRow([r.fecha, r.horaInicio, r.horaFin, r.actividad, '', r.categoria, r.modalidad, r.bmsId, r.campana]);
   }
-  ws3.columns.forEach((col, i) => { col.width = [11, 12, 12, 28, 20, 12, 10, 10][i] || 12; });
+  ws3.columns.forEach((col, i) => { col.width = [11, 12, 12, 28, 10, 20, 12, 10, 10][i] || 12; });
   ws3.views = [{ state: 'frozen', ySplit: 1 }];
+
 
   // Hoja 4: Indicadores
   const ws4 = wb.addWorksheet('Indicadores');
@@ -1494,11 +1502,33 @@ function renderPhotosPreview() {
     el.innerHTML = '<div class="empty">Aún no has subido fotos. Si no subes ninguna, la PPT trae los recuadros marcados para que las pegues tú.</div>';
     return;
   }
-  el.innerHTML = lastPhotos.map((p, i) =>
-    `<div class="photo-thumb"><img src="${p.dataUrl}" alt="${p.name}"><button type="button" data-i="${i}" class="photo-remove">×</button></div>`
-  ).join('');
+  let html = '<p class="help" style="margin-bottom:10px;">Se usan en este orden — la <b>Foto 1</b> va en el primer marco de la slide, y así sucesivamente. Usa las flechas para reordenar.</p>';
+  html += '<div class="photos-grid">' + lastPhotos.map((p, i) => `
+    <div class="photo-thumb${i >= 5 ? ' photo-unused' : ''}">
+      <span class="photo-badge">${i < 5 ? 'Foto ' + (i + 1) : 'No se usa'}</span>
+      <img src="${p.dataUrl}" alt="${p.name}">
+      <div class="photo-controls">
+        <button type="button" data-i="${i}" data-dir="-1" class="photo-move" ${i === 0 ? 'disabled' : ''}>↑</button>
+        <button type="button" data-i="${i}" data-dir="1" class="photo-move" ${i === lastPhotos.length - 1 ? 'disabled' : ''}>↓</button>
+        <button type="button" data-i="${i}" class="photo-remove">×</button>
+      </div>
+    </div>`).join('') + '</div>';
+  if (lastPhotos.length > 5) {
+    html += `<div class="warn-box" style="margin-top:10px;">Tu plantilla trae 5 marcos de foto — subiste ${lastPhotos.length}. Las marcadas "No se usa" no saldrán en la PPT; reordénalas si quieres cambiar cuáles sí entran.</div>`;
+  }
+  el.innerHTML = html;
   el.querySelectorAll('.photo-remove').forEach(btn => {
     btn.onclick = () => { lastPhotos.splice(parseInt(btn.dataset.i, 10), 1); renderPhotosPreview(); };
+  });
+  el.querySelectorAll('.photo-move').forEach(btn => {
+    btn.onclick = () => {
+      const i = parseInt(btn.dataset.i, 10);
+      const dir = parseInt(btn.dataset.dir, 10);
+      const j = i + dir;
+      if (j < 0 || j >= lastPhotos.length) return;
+      [lastPhotos[i], lastPhotos[j]] = [lastPhotos[j], lastPhotos[i]];
+      renderPhotosPreview();
+    };
   });
 }
 
@@ -1659,17 +1689,12 @@ function buildDownloadList(computed) {
   const otherItems = [
     {
       name: `Bitacora_${mesSolo}.xlsx`,
-      desc: `Excel · datos brutos, únicos, transversales, indicadores y calendario sugerido de ${nextLabel}`,
+      desc: `Excel · datos brutos, únicos, únicos transversales, todos los transversales, indicadores y calendario sugerido de ${nextLabel}`,
       make: () => generateExcelWorkbook(computed, mesLabel, lastSuggestedCalendar, nextLabel),
     },
     {
       name: `PPT_${mesSolo}.pptx`,
-      desc: `PPT · portada, resumen, impactos, gráfico, calendario sugerido de ${nextLabel} y espacio para fotos`,
-      make: () => generatePptx(computed, mesLabel, lastSuggestedCalendar, nextLabel, lastPhotos),
-    },
-    {
-      name: `PPT_Plantilla_Real_${mesSolo}.pptx`,
-      desc: `PPT · usando directamente tu plantilla real (Informe del Mes) con tus datos del mes`,
+      desc: `PPT · tu plantilla real (Informe del Mes) con los datos de este mes ya llenos`,
       make: () => generatePptxFromRealTemplate(computed, mesLabel, lastSuggestedCalendar, nextLabel, lastPhotos),
     },
   ];
