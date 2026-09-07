@@ -48,6 +48,9 @@
   .cat-card .n{font-family:'IBM Plex Mono',monospace;font-size:20px;margin-top:4px;}
   .cat-card .detail{font-size:11px;color:var(--ink-soft);margin-top:2px;}
   .warn-box{background:#FBEFE9;border:1px solid #E3B99B;border-radius:var(--radius);padding:12px 14px;font-size:13px;color:#7A3E1D;margin-top:10px;}
+  .campana-filter-box{background:var(--paper-alt);border:1px solid var(--amber);border-radius:var(--radius);padding:14px 16px;margin-bottom:16px;}
+  .campana-filter-box label{display:block;font-family:'IBM Plex Mono',monospace;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--amber-deep);margin-bottom:6px;}
+  .campana-filter-box select{width:100%;max-width:420px;padding:9px 10px;font-size:14px;border:1px solid var(--line);border-radius:var(--radius);background:var(--white);color:var(--ink);}
   .ok-box{background:#EAF3EF;border:1px solid #A9D8B8;border-radius:var(--radius);padding:12px 14px;font-size:13px;color:#1F5C3F;margin-top:10px;}
   .ok-box div + div{margin-top:5px;}
 
@@ -353,59 +356,149 @@ async function ensurePptxContentType(zip, ext, mime) {
   zip.file(path, ct);
 }
 
-async function insertPhotosIntoSlide(zip, slidePath, relsPath, photos) {
-  let slideXml = await zip.file(slidePath).async('string');
-  let relsXml = await zip.file(relsPath).async('string');
-  const pics = [...slideXml.matchAll(/<p:pic>[\s\S]*?<\/p:pic>/g)];
-  const frameCandidates = pics.filter(m => {
-    const ext = m[0].match(/<a:ext cx="(\d+)" cy="(\d+)"/);
-    return ext && parseInt(ext[1], 10) > 3500000;
-  });
+/* Clona una slide completa (xml + rels + Content_Types + presentation.xml) y la
+   inserta justo después de la slide fuente en el orden de la presentación. */
+async function cloneSlideAfter(zip, sourceSlideNum) {
+  const sourcePath = `ppt/slides/slide${sourceSlideNum}.xml`;
+  const sourceRelsPath = `ppt/slides/_rels/slide${sourceSlideNum}.xml.rels`;
+  const slideXml = await zip.file(sourcePath).async('string');
+  const relsXml = await zip.file(sourceRelsPath).async('string');
 
-  // Reemplazar la imagen de cada marco por su version con el centro transparente
-  // (ya la tenemos procesada en POLAROID_FRAMES) para que la foto se vea a traves.
-  for (let i = 0; i < frameCandidates.length && i < POLAROID_FRAMES.length; i++) {
-    const picXML = frameCandidates[i][0];
-    const ridMatch = picXML.match(/r:embed="(rId\d+)"/);
-    if (!ridMatch) continue;
-    const rid = ridMatch[1];
-    const targetMatch = relsXml.match(new RegExp(`Id="${rid}"[^>]*Target="([^"]+)"`));
-    if (!targetMatch) continue;
-    const mediaTarget = targetMatch[1].replace('../media/', 'ppt/media/');
-    const frameB64 = POLAROID_FRAMES[i].data.split(',')[1];
-    zip.file(mediaTarget, frameB64, { base64: true });
+  const allSlideFiles = Object.keys(zip.files).filter(f => /^ppt\/slides\/slide\d+\.xml$/.test(f));
+  const existingNums = allSlideFiles.map(f => parseInt(f.match(/slide(\d+)\.xml/)[1], 10));
+  const newNum = Math.max(...existingNums) + 1;
+  zip.file(`ppt/slides/slide${newNum}.xml`, slideXml);
+  zip.file(`ppt/slides/_rels/slide${newNum}.xml.rels`, relsXml);
+
+  let ct = await zip.file('[Content_Types].xml').async('string');
+  ct = ct.replace('</Types>', `<Override PartName="/ppt/slides/slide${newNum}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/></Types>`);
+  zip.file('[Content_Types].xml', ct);
+
+  let presRelsXml = await zip.file('ppt/_rels/presentation.xml.rels').async('string');
+  const sourceRelMatch = presRelsXml.match(new RegExp(`Id="(rId\\d+)"[^>]*Target="slides/slide${sourceSlideNum}\\.xml"`));
+  const sourceRid = sourceRelMatch ? sourceRelMatch[1] : null;
+  const existingRidNums = [...presRelsXml.matchAll(/Id="rId(\d+)"/g)].map(m => parseInt(m[1], 10));
+  const newRid = `rId${Math.max(0, ...existingRidNums) + 1}`;
+  presRelsXml = presRelsXml.replace('</Relationships>', `<Relationship Id="${newRid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide${newNum}.xml"/></Relationships>`);
+  zip.file('ppt/_rels/presentation.xml.rels', presRelsXml);
+
+  let presXml = await zip.file('ppt/presentation.xml').async('string');
+  const sldIdMatches = [...presXml.matchAll(/<p:sldId id="(\d+)" r:id="(rId\d+)"\/>/g)];
+  const maxSldId = Math.max(...sldIdMatches.map(m => parseInt(m[1], 10)));
+  const newSldIdTag = `<p:sldId id="${maxSldId + 1}" r:id="${newRid}"/>`;
+  const anchor = sourceRid ? sldIdMatches.find(m => m[2] === sourceRid) : null;
+  presXml = anchor
+    ? presXml.replace(anchor[0], anchor[0] + newSldIdTag)
+    : presXml.replace('</p:sldIdLst>', newSldIdTag + '</p:sldIdLst>');
+  zip.file('ppt/presentation.xml', presXml);
+
+  return newNum;
+}
+
+/* Calcula el recorte (srcRect) para que la foto llene la celda sin deformarse,
+   igual que un "object-fit: cover" — recorta el sobrante en vez de estirar. */
+function coverSrcRect(imgW, imgH, cellW, cellH) {
+  const imgAspect = imgW / imgH, cellAspect = cellW / cellH;
+  if (!imgW || !imgH || !isFinite(imgAspect)) return '';
+  if (imgAspect > cellAspect) {
+    const cropEachPct = Math.max(0, (1 - cellAspect / imgAspect) / 2) * 100000;
+    return `<a:srcRect l="${Math.round(cropEachPct)}" r="${Math.round(cropEachPct)}"/>`;
+  } else {
+    const cropEachPct = Math.max(0, (1 - imgAspect / cellAspect) / 2) * 100000;
+    return `<a:srcRect t="${Math.round(cropEachPct)}" b="${Math.round(cropEachPct)}"/>`;
   }
+}
 
+const PHOTO_GRID_COLS = 3, PHOTO_GRID_ROWS = 2;
+const PHOTO_GRID_START_X = 365760, PHOTO_GRID_START_Y = 2400000;
+const PHOTO_GRID_END_X = 8229600, PHOTO_GRID_END_Y = 6260000;
+const PHOTO_GRID_GAP = 137160;
+function photoGridCellRect(col, row) {
+  const totalW = PHOTO_GRID_END_X - PHOTO_GRID_START_X, totalH = PHOTO_GRID_END_Y - PHOTO_GRID_START_Y;
+  const cellW = (totalW - (PHOTO_GRID_COLS - 1) * PHOTO_GRID_GAP) / PHOTO_GRID_COLS;
+  const cellH = (totalH - (PHOTO_GRID_ROWS - 1) * PHOTO_GRID_GAP) / PHOTO_GRID_ROWS;
+  return {
+    x: Math.round(PHOTO_GRID_START_X + col * (cellW + PHOTO_GRID_GAP)),
+    y: Math.round(PHOTO_GRID_START_Y + row * (cellH + PHOTO_GRID_GAP)),
+    w: Math.round(cellW), h: Math.round(cellH),
+  };
+}
+
+/* Quita los 5 marcos con cinta originales de una slide de fotos (los identificamos
+   por tamaño, igual que antes) y deja la slide lista para la cuadrícula nueva. */
+function stripOldFrames(slideXml) {
+  const pics = [...slideXml.matchAll(/<p:pic>[\s\S]*?<\/p:pic>/g)];
+  let out = slideXml;
+  for (const m of pics) {
+    const ext = m[0].match(/<a:ext cx="(\d+)" cy="(\d+)"/);
+    if (ext && parseInt(ext[1], 10) > 3000000) out = out.replace(m[0], '');
+  }
+  return out;
+}
+
+/* Llena una slide de fotos (ya sin marcos viejos) con hasta 6 fotos en cuadrícula
+   uniforme y pareja, con recorte "cover" y borde de color alterno morado/naranja.
+   Las celdas sin foto quedan como recuadro vacío marcado. */
+async function fillPhotoGrid(zip, slideNum, photosSlice) {
+  const slidePath = `ppt/slides/slide${slideNum}.xml`;
+  const relsPath = `ppt/slides/_rels/slide${slideNum}.xml.rels`;
+  let slideXml = stripOldFrames(await zip.file(slidePath).async('string'));
+  let relsXml = await zip.file(relsPath).async('string');
   const existingRidNums = [...relsXml.matchAll(/Id="rId(\d+)"/g)].map(m => parseInt(m[1], 10));
   let nextRid = Math.max(0, ...existingRidNums) + 1;
   let newRelsEntries = '';
-  const insertions = [];
-  for (let i = 0; i < frameCandidates.length && i < photos.length; i++) {
-    const picXML = frameCandidates[i][0];
-    const off = picXML.match(/<a:off x="(-?\d+)" y="(-?\d+)"\/>/);
-    const ext = picXML.match(/<a:ext cx="(\d+)" cy="(\d+)"\/>/);
-    if (!off || !ext) continue;
-    const photo = photos[i];
-    const mimeMatch = photo.dataUrl.match(/^data:image\/(\w+);base64,([\s\S]*)$/);
-    if (!mimeMatch) continue;
-    let extType = mimeMatch[1].toLowerCase();
-    if (extType === 'jpg') extType = 'jpeg';
-    if (!['jpeg', 'png', 'gif', 'bmp'].includes(extType)) extType = 'png';
-    await ensurePptxContentType(zip, extType, `image/${extType}`);
-    const mediaName = `userphoto_${Date.now()}_${i}.${extType}`;
-    zip.file(`ppt/media/${mediaName}`, mimeMatch[2], { base64: true });
-    const rid = `rId${nextRid++}`;
-    newRelsEntries += `<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${mediaName}"/>`;
-    const uid = 9000 + i;
-    const newPicXML = `<p:pic><p:nvPicPr><p:cNvPr id="${uid}" name="userphoto${uid}"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="${rid}" cstate="print"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr><a:xfrm><a:off x="${off[1]}" y="${off[2]}"/><a:ext cx="${ext[1]}" cy="${ext[2]}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`;
-    insertions.push({ old: picXML, newPic: newPicXML });
+  let picsXml = '';
+  const colors = ['8051FF', 'FF5B00'];
+
+  for (let slot = 0; slot < PHOTO_GRID_COLS * PHOTO_GRID_ROWS; slot++) {
+    const col = slot % PHOTO_GRID_COLS, row = Math.floor(slot / PHOTO_GRID_COLS);
+    const rect = photoGridCellRect(col, row);
+    const color = colors[slot % 2];
+    const photo = photosSlice[slot];
+    const uid = 9000 + slideNum * 10 + slot;
+    if (photo) {
+      const mimeMatch = photo.dataUrl.match(/^data:image\/(\w+);base64,([\s\S]*)$/);
+      if (!mimeMatch) continue;
+      let extType = mimeMatch[1].toLowerCase();
+      if (extType === 'jpg') extType = 'jpeg';
+      if (!['jpeg', 'png', 'gif', 'bmp'].includes(extType)) extType = 'png';
+      await ensurePptxContentType(zip, extType, `image/${extType}`);
+      const mediaName = `userphoto_${Date.now()}_${slideNum}_${slot}.${extType}`;
+      zip.file(`ppt/media/${mediaName}`, mimeMatch[2], { base64: true });
+      const rid = `rId${nextRid++}`;
+      newRelsEntries += `<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${mediaName}"/>`;
+      const srcRect = coverSrcRect(photo.width, photo.height, rect.w, rect.h);
+      picsXml += `<p:pic><p:nvPicPr><p:cNvPr id="${uid}" name="photo${uid}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="${rid}" cstate="print"/><a:srcRect/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr><a:xfrm><a:off x="${rect.x}" y="${rect.y}"/><a:ext cx="${rect.w}" cy="${rect.h}"/></a:xfrm><a:prstGeom prst="roundRect"><a:avLst><a:gd name="adj" fmla="val 4500"/></a:avLst></a:prstGeom><a:ln w="28575"><a:solidFill><a:srgbClr val="${color}"/></a:solidFill></a:ln></p:spPr></p:pic>`.replace('<a:srcRect/>', srcRect || '');
+    } else {
+      picsXml += `<p:sp><p:nvSpPr><p:cNvPr id="${uid}" name="photoPlaceholder${uid}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="${rect.x}" y="${rect.y}"/><a:ext cx="${rect.w}" cy="${rect.h}"/></a:xfrm><a:prstGeom prst="roundRect"><a:avLst><a:gd name="adj" fmla="val 4500"/></a:avLst></a:prstGeom><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:ln w="12700"><a:prstDash val="dash"/><a:solidFill><a:srgbClr val="8A8F9C"/></a:solidFill></a:ln></p:spPr><p:txBody><a:bodyPr wrap="square" anchor="ctr"/><a:lstStyle/><a:p><a:pPr algn="ctr"/><a:r><a:rPr sz="1100" i="1" dirty="0"><a:solidFill><a:srgbClr val="8A8F9C"/></a:solidFill><a:latin typeface="Calibri"/><a:cs typeface="Calibri"/></a:rPr><a:t>Pega tu foto aqu&#237;</a:t></a:r></a:p></p:txBody></p:sp>`;
+    }
   }
-  for (const ins of insertions) {
-    slideXml = slideXml.replace(ins.old, ins.newPic + ins.old);
-  }
+
+  slideXml = slideXml.replace('</p:spTree>', picsXml + '</p:spTree>');
   relsXml = relsXml.replace('</Relationships>', newRelsEntries + '</Relationships>');
   zip.file(slidePath, slideXml);
   zip.file(relsPath, relsXml);
+}
+
+/* Reparte todas las fotos en tantas slides de 6 como hagan falta (clonando la
+   slide de Fotos original las veces que se necesite), en cuadrícula uniforme. */
+async function buildFotosSlides(zip, sourceSlideNum, photos) {
+  const perSlide = PHOTO_GRID_COLS * PHOTO_GRID_ROWS;
+  const groups = [];
+  if (photos.length === 0) {
+    groups.push([]);
+  } else {
+    for (let i = 0; i < photos.length; i += perSlide) groups.push(photos.slice(i, i + perSlide));
+  }
+  // Primero se clonan todas las slides que hagan falta (todavía con los marcos viejos
+  // sin tocar), y solo después se llena cada una — así ninguna hereda fotos ya puestas.
+  const slideNums = [sourceSlideNum];
+  for (let g = 1; g < groups.length; g++) {
+    slideNums.push(await cloneSlideAfter(zip, slideNums[slideNums.length - 1]));
+  }
+  for (let g = 0; g < groups.length; g++) {
+    await fillPhotoGrid(zip, slideNums[g], groups[g]);
+  }
 }
 
 /* ---- Orquestador principal: genera la PPT a partir de tu plantilla real ---- */
@@ -436,12 +529,14 @@ async function generatePptxFromRealTemplate(computed, mesLabel, suggestedCalenda
   zip.file('ppt/slides/slide3.xml', s3);
 
   let s4 = await zip.file('ppt/slides/slide4.xml').async('string');
-  s4 = fillChartShapesReal(s4, computed.activitySummary);
+  const categoryChartData = CANONICAL_CATEGORIES
+    .map(cat => ({ nombre: cat, total: computed.byCategory[cat].cantidad }))
+    .filter(c => c.total > 0)
+    .sort((a, b) => b.total - a.total);
+  s4 = fillChartShapesReal(s4, categoryChartData);
   zip.file('ppt/slides/slide4.xml', s4);
 
-  if (photos.length > 0) {
-    await insertPhotosIntoSlide(zip, 'ppt/slides/slide5.xml', 'ppt/slides/_rels/slide5.xml.rels', photos.slice(0, 5));
-  }
+  await buildFotosSlides(zip, 5, photos);
 
   let s6 = await zip.file('ppt/slides/slide6.xml').async('string');
   const sugByDay = new Map();
@@ -548,13 +643,14 @@ function fillChartShapesReal(xml, allActivities) {
   const insertAfter = shapes[2][0];
   newXml = newXml.replace(insertAfter, insertAfter + barsXml + labelParasXml);
 
-  // etiquetas de eje inferior (0 ... scaleMax)
+  // etiquetas de eje inferior (0 ... scaleMax) — usamos las formas ORIGINALES
+  // (capturadas al inicio, antes de insertar/quitar nada) para no depender de
+  // índices que ya cambiaron de posición tras las ediciones anteriores.
   const axisIdx = [10, 11, 12, 13, 14, 15];
-  const freshShapes = [...newXml.matchAll(/<p:sp>[\s\S]*?<\/p:sp>/g)];
   const axisReplacements = [];
   for (let i = 0; i < 6; i++) {
-    const shapeXML = freshShapes[axisIdx[i]] ? freshShapes[axisIdx[i]][0] : null;
-    if (!shapeXML) continue;
+    const shapeXML = shapes[axisIdx[i]] ? shapes[axisIdx[i]][0] : null;
+    if (!shapeXML || !newXml.includes(shapeXML)) continue;
     const label = String(Math.round(scaleMax * (i / 5)));
     const m = shapeXML.match(/<a:t>[^<]*<\/a:t>/);
     if (!m) continue;
@@ -690,16 +786,49 @@ const MONTH_THEMES = {
   11: 'mes de las velitas y la Navidad 🕯️',
 };
 
+// Actividades con tema especial para los meses de celebración en Colombia —
+// se usan primero, y si el mes tiene más días laborales de los que alcanza
+// el tema, se completa con el banco genérico de SUGGESTED_POOL.
+const SEASONAL_POOL = {
+  7: [ // agosto — mes de las cometas
+    { actividad: 'Vuelo de Cometas en Equipo', categoria: 'Happy Time', duracion: '30 min' },
+    { actividad: 'Concurso: La Cometa Más Creativa', categoria: 'Habilidades Blandas', duracion: '30 min' },
+    { actividad: 'Taller de Armado de Cometas', categoria: 'Habilidades Blandas', duracion: '30 min' },
+    { actividad: 'Trivia: Origen de las Cometas', categoria: 'Experiencias Mentales', duracion: '20 min' },
+    { actividad: 'Desfile de Cometas Caseras', categoria: 'Happy Time', duracion: '25 min' },
+  ],
+  8: [ // septiembre — mes del amor y la amistad
+    { actividad: 'Bingo de Amor y Amistad', categoria: 'Happy Time', duracion: '30 min' },
+    { actividad: 'Amigo Secreto Sorpresa', categoria: 'Happy Time', duracion: '20 min' },
+    { actividad: 'Cartas de Agradecimiento', categoria: 'Habilidades Blandas', duracion: '20 min' },
+    { actividad: 'Ruleta de Cumplidos', categoria: 'Happy Time', duracion: '15 min' },
+    { actividad: 'Intercambio de Detalles', categoria: 'Happy Time', duracion: '20 min' },
+    { actividad: '¿Qué Tanto Te Conozco?', categoria: 'Experiencias Mentales', duracion: '20 min' },
+    { actividad: 'Concurso de Poemas de Amistad', categoria: 'Experiencias Mentales', duracion: '25 min' },
+    { actividad: 'Mural de Mensajes de Amistad', categoria: 'Habilidades Blandas', duracion: '20 min' },
+  ],
+  11: [ // diciembre — mes de las velitas y la Navidad
+    { actividad: 'Concurso de Villancicos', categoria: 'Happy Time', duracion: '30 min' },
+    { actividad: 'Decora tu Puesto Navideño', categoria: 'Happy Time', duracion: '20 min' },
+    { actividad: 'Intercambio de Regalos', categoria: 'Happy Time', duracion: '30 min' },
+    { actividad: 'Noche de Velitas (Virtual)', categoria: 'Experiencias Mentales', duracion: '20 min' },
+    { actividad: 'Trivia Navideña', categoria: 'Experiencias Mentales', duracion: '20 min' },
+    { actividad: 'Concurso de Suéteres Navideños', categoria: 'Happy Time', duracion: '20 min' },
+  ],
+};
+
 function generateSuggestedCalendar(mesIdx, anio) {
   const total = daysInMonth(mesIdx, anio);
-  const targetWeekdays = [2, 4, 5]; // martes, jueves, viernes
+  const targetWeekdays = [1, 2, 3, 4, 5]; // lunes a viernes (no trabajan sábados ni domingos)
+  const seasonal = SEASONAL_POOL[mesIdx] || [];
+  const pool = seasonal.length ? [...seasonal, ...SUGGESTED_POOL] : SUGGESTED_POOL;
   const items = [];
-  let poolIdx = mesIdx % SUGGESTED_POOL.length; // arranca en un punto distinto cada mes
+  let poolIdx = seasonal.length ? 0 : mesIdx % pool.length; // si hay tema del mes, siempre arranca por ahí
   for (let day = 1; day <= total; day++) {
     const d = new Date(anio, mesIdx, day);
     const wd = d.getDay();
     if (targetWeekdays.includes(wd) && !isHoliday(day, mesIdx, anio)) {
-      const item = SUGGESTED_POOL[poolIdx % SUGGESTED_POOL.length];
+      const item = pool[poolIdx % pool.length];
       poolIdx++;
       items.push({
         fecha: `${day}/${mesIdx + 1}/${anio}`,
@@ -1495,6 +1624,15 @@ function readFileAsDataURL(file) {
   });
 }
 
+function getImageDimensions(dataUrl) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve({ width: img.naturalWidth || 1, height: img.naturalHeight || 1 });
+    img.onerror = () => resolve({ width: 1, height: 1 });
+    img.src = dataUrl;
+  });
+}
+
 function renderPhotosPreview() {
   const el = document.getElementById('photosPreview');
   if (!el) return;
@@ -1502,10 +1640,10 @@ function renderPhotosPreview() {
     el.innerHTML = '<div class="empty">Aún no has subido fotos. Si no subes ninguna, la PPT trae los recuadros marcados para que las pegues tú.</div>';
     return;
   }
-  let html = '<p class="help" style="margin-bottom:10px;">Se usan en este orden — la <b>Foto 1</b> va en el primer marco de la slide, y así sucesivamente. Usa las flechas para reordenar.</p>';
+  let html = '<p class="help" style="margin-bottom:10px;">Se usan en este orden, 6 por slide — si subes más de 6, la PPT arma slides de fotos adicionales solas. Usa las flechas para reordenar.</p>';
   html += '<div class="photos-grid">' + lastPhotos.map((p, i) => `
-    <div class="photo-thumb${i >= 5 ? ' photo-unused' : ''}">
-      <span class="photo-badge">${i < 5 ? 'Foto ' + (i + 1) : 'No se usa'}</span>
+    <div class="photo-thumb">
+      <span class="photo-badge">Foto ${i + 1} · slide ${Math.floor(i / 6) + 1}</span>
       <img src="${p.dataUrl}" alt="${p.name}">
       <div class="photo-controls">
         <button type="button" data-i="${i}" data-dir="-1" class="photo-move" ${i === 0 ? 'disabled' : ''}>↑</button>
@@ -1513,8 +1651,9 @@ function renderPhotosPreview() {
         <button type="button" data-i="${i}" class="photo-remove">×</button>
       </div>
     </div>`).join('') + '</div>';
-  if (lastPhotos.length > 5) {
-    html += `<div class="warn-box" style="margin-top:10px;">Tu plantilla trae 5 marcos de foto — subiste ${lastPhotos.length}. Las marcadas "No se usa" no saldrán en la PPT; reordénalas si quieres cambiar cuáles sí entran.</div>`;
+  if (lastPhotos.length > 6) {
+    const nSlides = Math.ceil(lastPhotos.length / 6);
+    html += `<div class="ok-box" style="margin-top:10px;">Con ${lastPhotos.length} fotos, la PPT va a traer ${nSlides} slides de fotos (6 por slide) — todas se usan.</div>`;
   }
   el.innerHTML = html;
   el.querySelectorAll('.photo-remove').forEach(btn => {
@@ -1539,7 +1678,8 @@ if (photosInputEl) {
     for (const f of files) {
       try {
         const dataUrl = await readFileAsDataURL(f);
-        lastPhotos.push({ dataUrl, name: f.name });
+        const dims = await getImageDimensions(dataUrl);
+        lastPhotos.push({ dataUrl, name: f.name, width: dims.width, height: dims.height });
       } catch (err) { toast(err.message, true); }
     }
     renderPhotosPreview();
@@ -1589,6 +1729,9 @@ function generateEmailText(computed, mesLabel, nextMesLabel) {
   return text;
 }
 
+let lastRawRows = [];
+let lastCampanaFilter = 'Todas';
+
 document.getElementById('procesarBtn').addEventListener('click', () => {
   const text = document.getElementById('rawData').value;
   const msgEl = document.getElementById('procesarMsg');
@@ -1607,6 +1750,14 @@ document.getElementById('procesarBtn').addEventListener('click', () => {
     return;
   }
 
+  lastRawRows = rows;
+  lastCampanaFilter = 'Todas';
+  processAndRender();
+  toast('Datos procesados. Ya puedes ver la vista previa y descargar.');
+});
+
+function processAndRender() {
+  const rows = lastCampanaFilter === 'Todas' ? lastRawRows : lastRawRows.filter(r => r.campana === lastCampanaFilter);
   const computed = computeAll(rows);
   lastComputed = computed;
 
@@ -1617,20 +1768,44 @@ document.getElementById('procesarBtn').addEventListener('click', () => {
 
   const summaryStep = document.getElementById('summaryStep');
   const summaryContent = document.getElementById('summaryContent');
-  let html = `<p class="help" style="margin-bottom:14px;">Cada tarjeta es <b>un solo informe Word</b> — todas las actividades de esa categoría en el mes quedan juntas en un único archivo.</p>`;
+  let html = '';
+
+  const allCampanas = [...new Set(lastRawRows.map(r => r.campana))];
+  if (allCampanas.length > 1) {
+    html += `<div class="campana-filter-box">
+      <label for="campanaFilterSelect">Generar informes para:</label>
+      <select id="campanaFilterSelect">
+        <option value="Todas" ${lastCampanaFilter === 'Todas' ? 'selected' : ''}>Todas las campañas juntas (resumen general)</option>
+        ${allCampanas.map(c => `<option value="${c}" ${lastCampanaFilter === c ? 'selected' : ''}>Solo ${c}</option>`).join('')}
+      </select>
+      <p class="help" style="margin:6px 0 0 0;">Tu Excel trae ${allCampanas.length} campañas distintas (${allCampanas.join(', ')}). Elige una para generar su informe completo aparte, o "Todas" para el resumen general mezclado.</p>
+    </div>`;
+  }
+
+  html += `<p class="help" style="margin-bottom:14px;">Cada tarjeta es <b>un solo informe Word</b> — todas las actividades de esa categoría en el mes quedan juntas en un único archivo.</p>`;
   html += `<div class="grid-cat">`;
   for (const cat of CANONICAL_CATEGORIES) {
     const d = computed.byCategory[cat];
     html += `<div class="cat-card"><div class="name">${cat}</div><div class="n">${d.cantidad}</div><div class="detail">${d.sesiones.length} sesiones agrupadas · ${d.impactosUnicos} impactos únicos</div></div>`;
   }
   html += `</div>`;
-  html += `<div class="ok-box">Tu Excel tenía ${rows.length} filas. En total, ${computed.distinctAllCount} personas participaron en al menos una actividad este mes.</div>`;
-  html += `<div class="ok-box">Campañas detectadas: <b>${computed.campanas.join(', ')}</b>${computed.campanas.length > 1 ? ' — cada informe agrupa correctamente por su propia campaña.' : ' (agrega una columna CAMPAÑA en tus datos si necesitas más de una).'}</div>`;
+  html += `<div class="ok-box">Tu Excel tenía ${rows.length} filas${lastCampanaFilter !== 'Todas' ? ` para la campaña "${lastCampanaFilter}"` : ''}. En total, ${computed.distinctAllCount} personas participaron en al menos una actividad este mes.</div>`;
+  if (lastCampanaFilter === 'Todas') {
+    html += `<div class="ok-box">Campañas detectadas: <b>${computed.campanas.join(', ')}</b>${computed.campanas.length > 1 ? ' — si quieres el informe de una sola, elígela arriba.' : ' (agrega una columna CAMPAÑA en tus datos si necesitas más de una).'}</div>`;
+  }
   if (computed.unknownCats.length) {
     html += `<div class="warn-box">Categorías sin plantilla conocida (no se generará informe Word para estas, pero sí quedan en el Excel): ${computed.unknownCats.join(', ')}</div>`;
   }
   summaryContent.innerHTML = html;
   summaryStep.classList.add('show');
+
+  const filterSelect = document.getElementById('campanaFilterSelect');
+  if (filterSelect) {
+    filterSelect.addEventListener('change', (e) => {
+      lastCampanaFilter = e.target.value;
+      processAndRender();
+    });
+  }
 
   renderPreview(computed, currentMesLabel(), lastSuggestedCalendar, nextMesLabel());
   document.getElementById('previewStep').classList.add('show');
@@ -1645,8 +1820,7 @@ document.getElementById('procesarBtn').addEventListener('click', () => {
 
   document.getElementById('downloadsStep').classList.add('show');
   buildDownloadList(computed);
-  toast('Datos procesados. Ya puedes ver la vista previa y descargar.');
-});
+}
 
 function currentMesLabel() {
   const mes = document.getElementById('mesSelect').value;
@@ -1675,25 +1849,28 @@ function buildDownloadList(computed) {
   dlList.innerHTML = '';
   lastFiles = [];
   const mesSolo = document.getElementById('mesSelect').value;
+  const campSuffix = (lastCampanaFilter && lastCampanaFilter !== 'Todas')
+    ? '_' + lastCampanaFilter.replace(/[^a-zA-Z0-9ÁÉÍÓÚÑáéíóúñ]+/g, '_')
+    : '';
 
   const catItems = [];
   for (const cat of CANONICAL_CATEGORIES) {
     if (!TEMPLATES_B64[cat]) continue;
     const d = computed.byCategory[cat];
     catItems.push({
-      name: `Informe_${cat.replace(/ /g, '_')}_${mesSolo}.docx`,
+      name: `Informe_${cat.replace(/ /g, '_')}_${mesSolo}${campSuffix}.docx`,
       desc: `1 informe · todas las actividades de "${cat}" del mes juntas · Cantidad ${d.cantidad} · Impactos Únicos ${d.impactosUnicos}${d.campanas.length > 1 ? ` · ${d.campanas.length} campañas` : ''}`,
       make: () => generateCategoryDocx(cat, d.sesiones, d.cantidad, d.impactosUnicos, mesLabel, d.campanas, d.campanaBreakdown),
     });
   }
   const otherItems = [
     {
-      name: `Bitacora_${mesSolo}.xlsx`,
-      desc: `Excel · datos brutos, únicos, únicos transversales, todos los transversales, indicadores y calendario sugerido de ${nextLabel}`,
+      name: `Bitacora_${mesSolo}${campSuffix}.xlsx`,
+      desc: `Excel · datos brutos, únicos, todos los transversales, indicadores y calendario sugerido de ${nextLabel}`,
       make: () => generateExcelWorkbook(computed, mesLabel, lastSuggestedCalendar, nextLabel),
     },
     {
-      name: `PPT_${mesSolo}.pptx`,
+      name: `PPT_${mesSolo}${campSuffix}.pptx`,
       desc: `PPT · tu plantilla real (Informe del Mes) con los datos de este mes ya llenos`,
       make: () => generatePptxFromRealTemplate(computed, mesLabel, lastSuggestedCalendar, nextLabel, lastPhotos),
     },
