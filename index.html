@@ -307,25 +307,38 @@ function replaceTable(xml, buildFn) {
 }
 
 /* ---- Calendario (usado en slide "Calendario MES" y "Lo que viene") ---- */
-function buildCalActivityCell(cellData, tcPrXML) {
+function buildCalActivityCell(cellData, tcPrXML, fontSz, lnSpcPct) {
   if (!cellData || (cellData.activities.length === 0 && !cellData.festivo)) {
     return `<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr sz="900"/></a:p></a:txBody>${tcPrXML}</a:tc>`;
   }
   let paras = '';
   if (cellData.festivo) {
-    paras += `<a:p><a:pPr><a:lnSpc><a:spcPct val="100000"/></a:lnSpc></a:pPr><a:r><a:rPr sz="800" b="1" dirty="0"><a:solidFill><a:srgbClr val="D9527A"/></a:solidFill><a:latin typeface="Calibri"/><a:cs typeface="Calibri"/></a:rPr><a:t>Festivo</a:t></a:r></a:p>`;
+    paras += `<a:p><a:pPr><a:lnSpc><a:spcPct val="${lnSpcPct}"/></a:lnSpc></a:pPr><a:r><a:rPr sz="${fontSz}" b="1" dirty="0"><a:solidFill><a:srgbClr val="D9527A"/></a:solidFill><a:latin typeface="Calibri"/><a:cs typeface="Calibri"/></a:rPr><a:t>Festivo</a:t></a:r></a:p>`;
   }
-  const maxShow = 3;
-  for (const act of cellData.activities.slice(0, maxShow)) {
-    paras += `<a:p><a:pPr><a:lnSpc><a:spcPct val="100000"/></a:lnSpc></a:pPr><a:r><a:rPr sz="700" dirty="0"><a:latin typeface="Calibri"/><a:cs typeface="Calibri"/></a:rPr><a:t>${pptxEsc('• ' + act)}</a:t></a:r></a:p>`;
+  // Se muestran TODAS las actividades del día (sin recortar a "+N más") — la
+  // letra se va achicando sola si el día más ocupado del mes tiene muchas.
+  const maxHardCap = 18; // solo como salvavidas ante un día con una cantidad absurda
+  for (const act of cellData.activities.slice(0, maxHardCap)) {
+    paras += `<a:p><a:pPr><a:lnSpc><a:spcPct val="${lnSpcPct}"/></a:lnSpc></a:pPr><a:r><a:rPr sz="${fontSz}" dirty="0"><a:latin typeface="Calibri"/><a:cs typeface="Calibri"/></a:rPr><a:t>${pptxEsc('• ' + act)}</a:t></a:r></a:p>`;
   }
-  if (cellData.activities.length > maxShow) {
-    paras += `<a:p><a:pPr><a:lnSpc><a:spcPct val="100000"/></a:lnSpc></a:pPr><a:r><a:rPr sz="700" i="1" dirty="0"><a:latin typeface="Calibri"/><a:cs typeface="Calibri"/></a:rPr><a:t>${pptxEsc('+' + (cellData.activities.length - maxShow) + ' más')}</a:t></a:r></a:p>`;
+  if (cellData.activities.length > maxHardCap) {
+    paras += `<a:p><a:pPr><a:lnSpc><a:spcPct val="${lnSpcPct}"/></a:lnSpc></a:pPr><a:r><a:rPr sz="${fontSz}" i="1" dirty="0"><a:latin typeface="Calibri"/><a:cs typeface="Calibri"/></a:rPr><a:t>${pptxEsc('+' + (cellData.activities.length - maxHardCap) + ' más')}</a:t></a:r></a:p>`;
   }
   return `<a:tc><a:txBody><a:bodyPr/><a:lstStyle/>${paras}</a:txBody>${tcPrXML}</a:tc>`;
 }
 
 function fillCalendarTableReal(xml, weeks) {
+  // Letra más chica si el día más ocupado del mes tiene muchas actividades,
+  // para que quepan todas sin salirse de la celda.
+  let maxPerDay = 1;
+  for (const week of weeks) {
+    for (const cell of week) {
+      if (cell) maxPerDay = Math.max(maxPerDay, cell.activities.length + (cell.festivo ? 1 : 0));
+    }
+  }
+  const fontSz = maxPerDay <= 3 ? 700 : maxPerDay <= 5 ? 600 : maxPerDay <= 8 ? 500 : maxPerDay <= 12 ? 430 : 380;
+  const lnSpcPct = maxPerDay <= 5 ? 100000 : 90000;
+
   return replaceTable(xml, (prefix, rows) => {
     const headerRow = rows[0];
     const dayRowTemplate = rows[1];
@@ -351,7 +364,7 @@ function fillCalendarTableReal(xml, weeks) {
         } else {
           dayRowCells += emptyDayCell;
         }
-        actRowCells += buildCalActivityCell(cell, emptyActTcPr);
+        actRowCells += buildCalActivityCell(cell, emptyActTcPr, fontSz, lnSpcPct);
       }
       body += dayTrOpen + dayRowCells + '</a:tr>';
       body += actTrOpen + actRowCells + '</a:tr>';
@@ -362,8 +375,24 @@ function fillCalendarTableReal(xml, weeks) {
 
 /* ---- Tabla de Impactos por Experiencia ---- */
 function fillImpactsTableReal(xml, items) {
+  // Se ensancha un poco el recuadro de la tabla (estaba pensado para 2
+  // columnas) para que quepan las 3 columnas con aire.
+  xml = xml.replace(/(<p:graphicFrame>[\s\S]*?<a:ext cx=")4064000("[\s\S]*?<a:tbl>)/, '$14150000$2');
+
   return replaceTable(xml, (prefix, rows) => {
+    // 3 columnas en vez de 2: Nombre | Cantidad | Impactos Únicos
+    prefix = prefix.replace(
+      /<a:tblGrid><a:gridCol w="\d+"\/><a:gridCol w="\d+"\/><\/a:tblGrid>/,
+      '<a:tblGrid><a:gridCol w="1950000"/><a:gridCol w="1000000"/><a:gridCol w="1150000"/></a:tblGrid>'
+    );
+
     const headerRow = rows[0].replace('<a:t>PARTICIPACIÓN</a:t>', '<a:t>IMPACTOS &#218;NICOS</a:t>');
+    const headerCells = extractPptxCells(headerRow);
+    const numHeaderTemplate = headerCells[1];
+    // celda de encabezado nueva "CANTIDAD", con el mismo estilo (tcPr) que la celda numerica original
+    const cantidadHeaderCell = `<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:pPr algn="ctr"><a:lnSpc><a:spcPct val="100000"/></a:lnSpc><a:spcBef><a:spcPts val="509"/></a:spcBef></a:pPr><a:r><a:rPr dirty="0" sz="1200" b="1"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:latin typeface="Calibri"/><a:cs typeface="Calibri"/></a:rPr><a:t>CANTIDAD</a:t></a:r></a:p></a:txBody>${pptxTcPr(numHeaderTemplate)}</a:tc>`;
+    const newHeaderRow = headerRow.replace(numHeaderTemplate, cantidadHeaderCell + numHeaderTemplate);
+
     const dataRowTemplate = rows[1];
     const totalRowTemplate = rows[rows.length - 1];
     const dataCells = extractPptxCells(dataRowTemplate);
@@ -380,20 +409,28 @@ function fillImpactsTableReal(xml, items) {
     const fontSz = rowHeight >= 300000 ? 1100 : rowHeight >= 220000 ? 950 : rowHeight >= 170000 ? 800 : rowHeight >= 130000 ? 650 : 550;
     const dataTrOpen = `<a:tr h="${rowHeight}">`;
 
-    let body = prefix + headerRow;
-    let total = 0;
+    function numCell(value) {
+      let c = numCellTemplate.replace(/<a:t>0<\/a:t>/, `<a:t>${value}</a:t>`);
+      c = c.replace(/sz="\d+"(?=[^>]*>[^<]*<a:t>)/, `sz="${fontSz}"`);
+      c = c.replace('<a:bodyPr/>', '<a:bodyPr anchor="ctr"/>');
+      return c;
+    }
+
+    let body = prefix + newHeaderRow;
+    let totalCantidad = 0, totalUnicos = 0;
     for (const item of items) {
       const nameCell = `<a:tc><a:txBody><a:bodyPr anchor="ctr"/><a:lstStyle/><a:p><a:pPr><a:lnSpc><a:spcPct val="100000"/></a:lnSpc></a:pPr><a:r><a:rPr dirty="0" sz="${fontSz}"><a:latin typeface="Calibri Light"/><a:cs typeface="Calibri Light"/></a:rPr><a:t>${pptxEsc(item.nombre)}</a:t></a:r></a:p></a:txBody>${nameCellTcPr}</a:tc>`;
-      let numCell = numCellTemplate.replace(/<a:t>0<\/a:t>/, `<a:t>${item.total}</a:t>`);
-      numCell = numCell.replace(/sz="\d+"(?=[^>]*>[^<]*<a:t>)/, `sz="${fontSz}"`);
-      numCell = numCell.replace('<a:bodyPr/>', '<a:bodyPr anchor="ctr"/>');
-      body += dataTrOpen + nameCell + numCell + '</a:tr>';
-      total += item.total;
+      const cantidad = item.cantidad != null ? item.cantidad : item.total;
+      const unicos = item.impactosUnicos != null ? item.impactosUnicos : item.total;
+      body += dataTrOpen + nameCell + numCell(cantidad) + numCell(unicos) + '</a:tr>';
+      totalCantidad += cantidad;
+      totalUnicos += unicos;
     }
     const totalCells = extractPptxCells(totalRowTemplate);
     const totalTrOpen = `<a:tr h="${rowHeight}">`;
-    const totalNumCell = totalCells[1].replace(/<a:t>0<\/a:t>/, `<a:t>${total}</a:t>`);
-    body += totalTrOpen + totalCells[0] + totalNumCell + '</a:tr>';
+    const totalCantidadCell = totalCells[1].replace(/<a:t>0<\/a:t>/, `<a:t>${totalCantidad}</a:t>`);
+    const totalUnicosCell = totalCells[1].replace(/<a:t>0<\/a:t>/, `<a:t>${totalUnicos}</a:t>`);
+    body += totalTrOpen + totalCells[0] + totalCantidadCell + totalUnicosCell + '</a:tr>';
     return body;
   });
 }
@@ -1215,16 +1252,18 @@ function computeAll(rows) {
   const campanas = [...new Set(uniqueRows.map(r => r.campana))];
 
   // agregación por nombre de actividad (para "Impactos por Experiencia" en la PPT
-  // y el Excel) — cuenta BMS distintos por actividad, es decir, personas únicas
-  // impactadas, no el total de registros/asistencias de esa actividad.
-  const byNameUnique = new Map();
+  // y el Excel) — trae ambos numeros por actividad: cantidad (total de
+  // registros/asistencias) e impactosUnicos (BMS distintos, personas únicas).
+  const byNameStats = new Map();
   for (const r of uniqueRows) {
-    if (!byNameUnique.has(r.actividad)) byNameUnique.set(r.actividad, new Set());
-    byNameUnique.get(r.actividad).add(r.bmsId);
+    if (!byNameStats.has(r.actividad)) byNameStats.set(r.actividad, { cantidad: 0, ids: new Set() });
+    const s = byNameStats.get(r.actividad);
+    s.cantidad++;
+    s.ids.add(r.bmsId);
   }
-  const activitySummary = [...byNameUnique.entries()]
-    .map(([nombre, idSet]) => ({ nombre, total: idSet.size }))
-    .sort((a, b) => b.total - a.total);
+  const activitySummary = [...byNameStats.entries()]
+    .map(([nombre, s]) => ({ nombre, cantidad: s.cantidad, impactosUnicos: s.ids.size, total: s.ids.size }))
+    .sort((a, b) => b.impactosUnicos - a.impactosUnicos);
 
   return {
     all: withFlag, uniqueRows, duplicateCount, transversalAll, sessions,
