@@ -11,65 +11,94 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js"></script>
 <style>
   :root{
-    --paper:#F1F7FC; --paper-alt:#E6F1FA; --ink:#1E2438; --ink-soft:#565D74;
-    --line:#D3E4F2; --amber:#E85D8A; --amber-deep:#C93F6C; --teal:#B4638A;
-    --red:#D9527A; --white:#FFFFFF; --radius:2px;
+    --paper:#F7F4FC; --paper-alt:#F0E9FA; --ink:#241B3A; --ink-soft:#6B6180;
+    --line:#E3D9F3; --amber:#8B5CF6; --amber-deep:#6D28D9; --teal:#D6467E;
+    --accent2:#FF7A59; --red:#D9527A; --white:#FFFFFF; --radius:14px; --radius-sm:9px;
+    --shadow-sm:0 1px 2px rgba(36,27,58,.06), 0 1px 1px rgba(36,27,58,.04);
+    --shadow-md:0 6px 20px -4px rgba(109,40,217,.16), 0 2px 6px rgba(36,27,58,.06);
+    --shadow-lg:0 20px 45px -12px rgba(109,40,217,.28);
+    --grad:linear-gradient(135deg,#8B5CF6 0%,#D6467E 100%);
   }
   *{box-sizing:border-box;}
-  body{margin:0;background:var(--paper);color:var(--ink);font-family:'IBM Plex Sans',sans-serif;-webkit-font-smoothing:antialiased;}
-  .wrap{max-width:920px;margin:0 auto;padding:40px 28px 80px 28px;}
-  .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--amber-deep);}
-  h1{font-family:'Newsreader',serif;font-weight:500;font-size:36px;margin:6px 0 6px 0;}
-  .sub{color:var(--ink-soft);font-size:14px;margin-bottom:12px;max-width:640px;line-height:1.5;}
-  .credit{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.06em;color:var(--amber-deep);margin-bottom:36px;}
-  .step{background:var(--white);border:1px solid var(--line);border-radius:var(--radius);padding:24px 26px;margin-bottom:20px;}
-  .step-head{display:flex;align-items:baseline;gap:12px;margin-bottom:14px;}
-  .step-num{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--amber-deep);border:1px solid var(--amber);border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-  .step h2{font-family:'Newsreader',serif;font-weight:500;font-size:19px;margin:0;}
-  .step p.help{color:var(--ink-soft);font-size:13px;margin:0 0 12px 0;line-height:1.5;}
-  textarea{width:100%;min-height:160px;border:1px solid var(--line);border-radius:var(--radius);padding:12px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;resize:vertical;background:var(--white);color:var(--ink);}
-  textarea:focus{outline:2px solid var(--amber);outline-offset:1px;}
+  body{margin:0;background:
+      radial-gradient(900px 500px at 100% -10%, #F3E8FF 0%, transparent 60%),
+      radial-gradient(800px 500px at -10% 10%, #FCE7F3 0%, transparent 55%),
+      var(--paper);
+    color:var(--ink);font-family:'IBM Plex Sans',sans-serif;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:920px;margin:0 auto;padding:28px 28px 90px 28px;}
+  .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--amber-deep);font-weight:600;}
+  h1{font-family:'Newsreader',serif;font-weight:500;font-size:38px;margin:6px 0 6px 0;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .sub{color:var(--ink-soft);font-size:14.5px;margin-bottom:12px;max-width:640px;line-height:1.55;}
+  .credit{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.06em;color:var(--amber-deep);margin-bottom:28px;}
+
+  /* ---- menú de pasos fijo arriba ---- */
+  .stepnav-shell{position:sticky;top:0;z-index:40;margin:0 -28px 28px -28px;padding:10px 28px;background:rgba(247,244,252,.85);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line);}
+  .stepnav{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;max-width:920px;margin:0 auto;}
+  .stepnav::-webkit-scrollbar{display:none;}
+  .stepnav-item{flex:0 0 auto;display:flex;align-items:center;gap:7px;padding:7px 13px 7px 8px;border-radius:999px;background:var(--white);border:1px solid var(--line);color:var(--ink-soft);font-size:12.5px;font-weight:500;cursor:pointer;white-space:nowrap;transition:all .18s ease;box-shadow:var(--shadow-sm);}
+  .stepnav-item:hover{border-color:var(--amber);color:var(--ink);transform:translateY(-1px);}
+  .stepnav-item .dot{width:20px;height:20px;border-radius:50%;background:var(--paper-alt);color:var(--amber-deep);font-family:'IBM Plex Mono',monospace;font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:600;}
+  .stepnav-item.active{background:var(--grad);color:#fff;border-color:transparent;box-shadow:var(--shadow-md);}
+  .stepnav-item.active .dot{background:rgba(255,255,255,.25);color:#fff;}
+  .stepnav-item.done .dot{background:#E3D9F3;color:var(--amber-deep);}
+  .stepnav-item.done .dot::after{content:'✓';}
+  .stepnav-item.done:not(.active){color:var(--ink);}
+
+  .step{background:var(--white);border:1px solid var(--line);border-radius:var(--radius);padding:26px 28px;margin-bottom:22px;box-shadow:var(--shadow-sm);transition:box-shadow .2s ease;scroll-margin-top:72px;}
+  .step:hover{box-shadow:var(--shadow-md);}
+  .step-head{display:flex;align-items:center;gap:13px;margin-bottom:16px;}
+  .step-num{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:13px;color:#fff;background:var(--grad);border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:var(--shadow-sm);}
+  .step h2{font-family:'Newsreader',serif;font-weight:500;font-size:20px;margin:0;}
+  .step p.help{color:var(--ink-soft);font-size:13px;margin:0 0 12px 0;line-height:1.55;}
+  textarea{width:100%;min-height:160px;border:1px solid var(--line);border-radius:var(--radius-sm);padding:13px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;resize:vertical;background:var(--paper);color:var(--ink);transition:border-color .15s, box-shadow .15s;}
+  textarea:focus{outline:none;border-color:var(--amber);box-shadow:0 0 0 3px rgba(139,92,246,.15);background:var(--white);}
   .row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-top:14px;}
   .field{display:flex;flex-direction:column;gap:5px;}
   .field label{font-size:11px;font-family:'IBM Plex Mono',monospace;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em;}
-  .field select, .field input{border:1px solid var(--line);padding:9px 10px;font-family:'IBM Plex Sans',sans-serif;font-size:14px;border-radius:var(--radius);background:var(--white);color:var(--ink);}
-  .btn{background:var(--amber);color:var(--white);border:none;padding:12px 20px;font-size:14px;font-weight:500;cursor:pointer;border-radius:var(--radius);}
-  .btn:hover{background:var(--amber-deep);}
-  .btn:disabled{opacity:.4;cursor:not-allowed;}
-  .btn-ghost{background:var(--white);color:var(--ink);border:1px solid var(--line);}
-  .btn-ghost:hover{border-color:var(--ink);}
+  .field select, .field input, input[type=text], input[type=number]{border:1px solid var(--line);padding:9px 11px;font-family:'IBM Plex Sans',sans-serif;font-size:14px;border-radius:var(--radius-sm);background:var(--paper);color:var(--ink);transition:border-color .15s, box-shadow .15s;}
+  .field select:focus, .field input:focus, input:focus{outline:none;border-color:var(--amber);box-shadow:0 0 0 3px rgba(139,92,246,.15);background:var(--white);}
+
+  .btn{background:var(--grad);color:var(--white);border:none;padding:13px 24px;font-size:14px;font-weight:600;cursor:pointer;border-radius:999px;box-shadow:var(--shadow-md);transition:transform .15s ease, box-shadow .15s ease, filter .15s ease;letter-spacing:.01em;}
+  .btn:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg);filter:brightness(1.05);}
+  .btn:active{transform:translateY(0);}
+  .btn:disabled{opacity:.45;cursor:not-allowed;transform:none;box-shadow:none;}
+  .btn-ghost{background:var(--white);color:var(--ink);border:1px solid var(--line);box-shadow:var(--shadow-sm);}
+  .btn-ghost:hover{border-color:var(--amber);color:var(--amber-deep);box-shadow:var(--shadow-md);}
   #procesarBtn{margin-top:16px;}
 
   .summary{display:none;}
   .summary.show{display:block;}
-  .grid-cat{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin:14px 0;}
-  .cat-card{border:1px solid var(--line);border-left:3px solid var(--teal);padding:12px 14px;border-radius:var(--radius);background:var(--white);}
+  .grid-cat{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:11px;margin:14px 0;}
+  .cat-card{border:1px solid var(--line);padding:14px 16px;border-radius:var(--radius-sm);background:linear-gradient(180deg,var(--white),var(--paper) 140%);position:relative;overflow:hidden;transition:transform .15s ease, box-shadow .15s ease;}
+  .cat-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--grad);}
+  .cat-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-md);}
   .cat-card .name{font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;}
-  .cat-card .n{font-family:'IBM Plex Mono',monospace;font-size:20px;margin-top:4px;}
+  .cat-card .n{font-family:'IBM Plex Mono',monospace;font-size:22px;margin-top:4px;font-weight:600;color:var(--amber-deep);}
   .cat-card .detail{font-size:11px;color:var(--ink-soft);margin-top:2px;}
-  .warn-box{background:#FBEFE9;border:1px solid #E3B99B;border-radius:var(--radius);padding:12px 14px;font-size:13px;color:#7A3E1D;margin-top:10px;}
-  .campana-filter-box{background:var(--paper-alt);border:1px solid var(--amber);border-radius:var(--radius);padding:14px 16px;margin-bottom:16px;}
-  .campana-filter-box label{display:block;font-family:'IBM Plex Mono',monospace;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--amber-deep);margin-bottom:6px;}
-  .campana-filter-box select{width:100%;max-width:420px;padding:9px 10px;font-size:14px;border:1px solid var(--line);border-radius:var(--radius);background:var(--white);color:var(--ink);}
-  .ok-box{background:#EAF3EF;border:1px solid #A9D8B8;border-radius:var(--radius);padding:12px 14px;font-size:13px;color:#1F5C3F;margin-top:10px;}
+  .warn-box{background:#FFF3E9;border:1px solid #F3C89C;border-radius:var(--radius-sm);padding:12px 14px;font-size:13px;color:#8A4A14;margin-top:10px;}
+  .campana-filter-box{background:var(--paper-alt);border:1px solid var(--line);border-radius:var(--radius-sm);padding:16px 18px;margin-bottom:16px;}
+  .campana-filter-box label{display:block;font-family:'IBM Plex Mono',monospace;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--amber-deep);margin-bottom:6px;font-weight:600;}
+  .campana-filter-box select{width:100%;max-width:420px;padding:9px 10px;font-size:14px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--white);color:var(--ink);}
+  .ok-box{background:#EAFBF2;border:1px solid #AEE4C8;border-radius:var(--radius-sm);padding:12px 14px;font-size:13px;color:#1A6B45;margin-top:10px;}
   .ok-box div + div{margin-top:5px;}
 
   .downloads{display:none;}
   .downloads.show{display:block;}
   .dl-list{list-style:none;padding:0;margin:0;}
-  .dl-list li{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;margin-bottom:8px;background:var(--white);}
-  .dl-list .fname{font-size:13.5px;}
+  .dl-list li{display:flex;justify-content:space-between;align-items:center;gap:14px;border:1px solid var(--line);border-radius:var(--radius-sm);padding:13px 16px;margin-bottom:9px;background:var(--white);transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease;}
+  .dl-list li:hover{transform:translateY(-1px);box-shadow:var(--shadow-md);border-color:var(--amber);}
+  .dl-list .fname{font-size:13.5px;font-weight:600;}
   .dl-list .fdesc{font-size:11.5px;color:var(--ink-soft);margin-top:2px;}
-  .dl-list button{background:none;border:1px solid var(--ink);color:var(--ink);padding:7px 14px;font-size:12.5px;font-family:'IBM Plex Mono',monospace;cursor:pointer;border-radius:var(--radius);}
-  .dl-list button:hover{background:var(--ink);color:var(--white);}
-  .dl-group-header{list-style:none;font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--amber-deep);margin:16px 0 8px 0;border:none !important;padding:0 !important;background:none !important;}
+  .dl-list button{background:var(--white);border:1px solid var(--ink);color:var(--ink);padding:8px 16px;font-size:12.5px;font-family:'IBM Plex Mono',monospace;font-weight:500;cursor:pointer;border-radius:999px;transition:all .15s ease;flex-shrink:0;}
+  .dl-list button:hover{background:var(--grad);color:var(--white);border-color:transparent;}
+  .dl-group-header{list-style:none;font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--amber-deep);font-weight:700;margin:18px 0 8px 0;border:none !important;padding:0 !important;background:none !important;}
   .dl-group-header:first-child{margin-top:0;}
 
-  .preview-section-title{font-family:'Newsreader',serif;font-weight:500;font-size:18px;margin:28px 0 12px 0;color:var(--ink);}
+  .preview-section-title{font-family:'Newsreader',serif;font-weight:500;font-size:19px;margin:30px 0 12px 0;color:var(--ink);}
   .preview-section-title:first-child{margin-top:0;}
-  table.sug-table thead th{background:var(--paper);}
+  table.sug-table thead th{background:var(--paper-alt);}
   table.sug-table tbody tr:nth-child(odd){background:var(--white);}
-  table.sug-table tbody tr:nth-child(even){background:#FAFAF8;}
+  table.sug-table tbody tr:nth-child(even){background:var(--paper);}
 
   #photosInput{display:block;margin-bottom:14px;font-size:13px;}
   .photos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;}
@@ -123,21 +152,34 @@
   <h1>Generador de Informes Mensuales</h1>
   <p class="sub">Pega el Excel del mes y la app arma: 1 informe Word por categoría, el libro de Excel completo, la PPT del mes y el calendario de actividades sugeridas para el mes siguiente — todo con vista previa antes de descargar. Es tu asistente de reportería, no solo un generador.</p>
 
-  <div class="step">
+  <div class="stepnav-shell">
+    <nav class="stepnav" id="stepnav">
+      <div class="stepnav-item" data-target="step1Mes"><span class="dot">1</span>Mes</div>
+      <div class="stepnav-item" data-target="step2Datos"><span class="dot">2</span>Datos</div>
+      <div class="stepnav-item" data-target="step3Fotos"><span class="dot">3</span>Fotos</div>
+      <div class="stepnav-item" data-target="summaryStep"><span class="dot">4</span>Resumen</div>
+      <div class="stepnav-item" data-target="glassdoorStep"><span class="dot">5</span>Glassdoor</div>
+      <div class="stepnav-item" data-target="previewStep"><span class="dot">6</span>Vista previa</div>
+      <div class="stepnav-item" data-target="emailStep"><span class="dot">7</span>Correo</div>
+      <div class="stepnav-item" data-target="downloadsStep"><span class="dot">8</span>Descargas</div>
+    </nav>
+  </div>
+
+  <div class="step" id="step1Mes">
     <div class="step-head"><div class="step-num">1</div><h2>Mes del informe</h2></div>
     <div class="row">
       <div class="field"><label>Mes</label>
         <select id="mesSelect">
           <option>Enero</option><option>Febrero</option><option>Marzo</option><option>Abril</option>
-          <option>Mayo</option><option>Junio</option><option selected>Julio</option><option>Agosto</option>
+          <option>Mayo</option><option>Junio</option><option>Julio</option><option>Agosto</option>
           <option>Septiembre</option><option>Octubre</option><option>Noviembre</option><option>Diciembre</option>
         </select>
       </div>
-      <div class="field"><label>Año</label><input type="number" id="anioInput" value="2026" style="width:90px;"></div>
+      <div class="field"><label>Año</label><input type="number" id="anioInput" style="width:90px;"></div>
     </div>
   </div>
 
-  <div class="step">
+  <div class="step" id="step2Datos">
     <div class="step-head"><div class="step-num">2</div><h2>Pega los datos del mes</h2></div>
     <p class="help">Copia directo desde tu Excel (incluyendo el encabezado) y pégalo aquí: FECHA · HORA DE INICIO · HORA DE FINALIZACION · NOMBRE DE LA ACTIVIDAD · CATEGORIA · MODALIDAD · BMS ID. Si manejas más de una campaña, agrega una octava columna CAMPAÑA — si no la incluyes, se asume "META CO" para todo.</p>
     <textarea id="rawData" placeholder="FECHA	HORA DE INICIO	HORA DE FINALIZACION	NOMBRE DE LA ACTIVIDAD	CATEGORIA	MODALIDAD	BMS ID	CAMPAÑA
@@ -147,7 +189,7 @@
     <div id="procesarMsg"></div>
   </div>
 
-  <div class="step">
+  <div class="step" id="step3Fotos">
     <div class="step-head"><div class="step-num">3</div><h2>Fotos del mes (opcional)</h2></div>
     <p class="help">Sube hasta 5 fotos — tu plantilla trae 5 marcos con cinta en la slide de Fotos, y se acomodan solas ahí, en el orden que las subas (puedes reordenarlas abajo). Si no subes ninguna, la PPT queda con los marcos vacíos para que las pegues tú después.</p>
     <input type="file" id="photosInput" accept="image/*" multiple>
@@ -321,7 +363,7 @@ function fillCalendarTableReal(xml, weeks) {
 /* ---- Tabla de Impactos por Experiencia ---- */
 function fillImpactsTableReal(xml, items) {
   return replaceTable(xml, (prefix, rows) => {
-    const headerRow = rows[0];
+    const headerRow = rows[0].replace('<a:t>PARTICIPACIÓN</a:t>', '<a:t>IMPACTOS &#218;NICOS</a:t>');
     const dataRowTemplate = rows[1];
     const totalRowTemplate = rows[rows.length - 1];
     const dataCells = extractPptxCells(dataRowTemplate);
@@ -341,9 +383,10 @@ function fillImpactsTableReal(xml, items) {
     let body = prefix + headerRow;
     let total = 0;
     for (const item of items) {
-      const nameCell = `<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:lnSpc><a:spcPct val="100000"/></a:lnSpc></a:pPr><a:r><a:rPr dirty="0" sz="${fontSz}"><a:latin typeface="Calibri Light"/><a:cs typeface="Calibri Light"/></a:rPr><a:t>${pptxEsc(item.nombre)}</a:t></a:r></a:p></a:txBody>${nameCellTcPr}</a:tc>`;
+      const nameCell = `<a:tc><a:txBody><a:bodyPr anchor="ctr"/><a:lstStyle/><a:p><a:pPr><a:lnSpc><a:spcPct val="100000"/></a:lnSpc></a:pPr><a:r><a:rPr dirty="0" sz="${fontSz}"><a:latin typeface="Calibri Light"/><a:cs typeface="Calibri Light"/></a:rPr><a:t>${pptxEsc(item.nombre)}</a:t></a:r></a:p></a:txBody>${nameCellTcPr}</a:tc>`;
       let numCell = numCellTemplate.replace(/<a:t>0<\/a:t>/, `<a:t>${item.total}</a:t>`);
       numCell = numCell.replace(/sz="\d+"(?=[^>]*>[^<]*<a:t>)/, `sz="${fontSz}"`);
+      numCell = numCell.replace('<a:bodyPr/>', '<a:bodyPr anchor="ctr"/>');
       body += dataTrOpen + nameCell + numCell + '</a:tr>';
       total += item.total;
     }
@@ -934,9 +977,11 @@ function toast(msg, isError) {
 }
 
 function parseFechaSortValue(fechaStr) {
+  // El formato de las fechas en toda la app es DÍA/MES/AÑO (el que usan los
+  // Excel en Colombia), no mes/día/año.
   const m = String(fechaStr || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if (!m) return 0;
-  const mo = parseInt(m[1], 10), day = parseInt(m[2], 10), yr = parseInt(m[3], 10);
+  const day = parseInt(m[1], 10), mo = parseInt(m[2], 10), yr = parseInt(m[3], 10);
   return yr * 10000 + mo * 100 + day;
 }
 function compareFechaHora(a, b) {
@@ -1113,10 +1158,16 @@ function parseRawData(text) {
 }
 
 /* ============ Cálculos ============ */
+function dedupKeyField(s) {
+  // normaliza espacios y mayúsculas para que "Presencial " y "presencial" (por
+  // ejemplo) sí se reconozcan como el mismo valor al buscar duplicados
+  return String(s || '').trim().replace(/\s+/g, ' ').toUpperCase();
+}
 function computeAll(rows) {
   const seen = new Map();
   const withFlag = rows.map(r => {
-    const key = [r.fecha, r.horaInicio, r.horaFin, r.actividad, r.categoria, r.modalidad, r.bmsId, r.campana].join('|');
+    const key = [r.fecha, r.horaInicio, r.horaFin, r.actividad, r.categoria, r.modalidad, r.bmsId, r.campana]
+      .map(dedupKeyField).join('|');
     const count = (seen.get(key) || 0) + 1;
     seen.set(key, count);
     return { ...r, duplicado: count > 1 };
@@ -1163,12 +1214,17 @@ function computeAll(rows) {
   const unknownCats = [...new Set(withFlag.map(r => r.categoria))].filter(c => !CANONICAL_CATEGORIES.includes(c));
   const campanas = [...new Set(uniqueRows.map(r => r.campana))];
 
-  // agregación por nombre de actividad (para resumen PPT)
-  const byName = new Map();
+  // agregación por nombre de actividad (para "Impactos por Experiencia" en la PPT
+  // y el Excel) — cuenta BMS distintos por actividad, es decir, personas únicas
+  // impactadas, no el total de registros/asistencias de esa actividad.
+  const byNameUnique = new Map();
   for (const r of uniqueRows) {
-    byName.set(r.actividad, (byName.get(r.actividad) || 0) + 1);
+    if (!byNameUnique.has(r.actividad)) byNameUnique.set(r.actividad, new Set());
+    byNameUnique.get(r.actividad).add(r.bmsId);
   }
-  const activitySummary = [...byName.entries()].map(([nombre, total]) => ({ nombre, total })).sort((a, b) => b.total - a.total);
+  const activitySummary = [...byNameUnique.entries()]
+    .map(([nombre, idSet]) => ({ nombre, total: idSet.size }))
+    .sort((a, b) => b.total - a.total);
 
   return {
     all: withFlag, uniqueRows, duplicateCount, transversalAll, sessions,
@@ -1477,7 +1533,7 @@ async function generateExcelWorkbook(computed, mesLabel, suggestedCalendar, next
   ws5.getCell('A1').font = { name: 'Calibri', italic: true, size: 10, color: { argb: 'FF565D74' } };
   ws5.mergeCells('A1:B1');
   ws5.addRow([]);
-  ws5.addRow(['NOMBRE DE LA ACTIVIDAD', '# DE PARTICIPACIÓN']);
+  ws5.addRow(['NOMBRE DE LA ACTIVIDAD', '# DE IMPACTOS ÚNICOS']);
   styleHeader(ws5, 3, 2);
   let totalGeneral = 0;
   for (const item of computed.activitySummary) {
@@ -1605,7 +1661,7 @@ function buildMonthGrid(sessions, mesIdx, anio) {
   for (const item of view) {
     const m = String(item.fecha).match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
     if (!m) continue;
-    const mo = parseInt(m[1], 10) - 1, day = parseInt(m[2], 10), yr = parseInt(m[3], 10);
+    const day = parseInt(m[1], 10), mo = parseInt(m[2], 10) - 1, yr = parseInt(m[3], 10);
     if (mo !== mesIdx || yr !== anio) continue;
     if (!byDay.has(day)) byDay.set(day, []);
     byDay.get(day).push(item.actividad);
@@ -2069,6 +2125,15 @@ function generateEmailText(computed, mesLabel, nextMesLabel) {
   return text;
 }
 
+// Al cargar, el mes y el año arrancan en los de HOY — nunca fijos en un mes viejo.
+(function initMesAnioPorDefecto() {
+  const hoy = new Date();
+  const mesSelectEl = document.getElementById('mesSelect');
+  const anioInputEl = document.getElementById('anioInput');
+  if (mesSelectEl && !mesSelectEl.dataset.userChanged) mesSelectEl.selectedIndex = hoy.getMonth();
+  if (anioInputEl && !anioInputEl.value) anioInputEl.value = hoy.getFullYear();
+})();
+
 let lastRawRows = [];
 let lastCampanaFilter = 'Todas';
 
@@ -2296,6 +2361,62 @@ document.getElementById('dlAllBtn').addEventListener('click', async () => {
     btn.disabled = false;
   }
 });
+
+/* ============ Menú de navegación por pasos ============ */
+(function initStepNav() {
+  const nav = document.getElementById('stepnav');
+  if (!nav) return;
+  const items = [...nav.querySelectorAll('.stepnav-item')];
+  const sections = items.map(it => ({ el: it, target: document.getElementById(it.dataset.target) })).filter(s => s.target);
+
+  items.forEach(it => {
+    it.addEventListener('click', () => {
+      const target = document.getElementById(it.dataset.target);
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+
+  function isVisible(el) {
+    if (el.classList.contains('summary') || el.classList.contains('downloads')) {
+      return el.classList.contains('show');
+    }
+    return true; // los pasos siempre visibles (Mes, Datos, Fotos, Glassdoor)
+  }
+
+  function updateActive() {
+    const navHeight = nav.closest('.stepnav-shell') ? nav.closest('.stepnav-shell').offsetHeight : 0;
+    const scrollPos = window.scrollY + navHeight + 40;
+    // las secciones aun ocultas (display:none) reportan offsetTop 0 y no deben
+    // competir por ser la "actual" — solo se consideran las visibles.
+    const visibleSections = sections.filter(s => isVisible(s.target));
+    let current = visibleSections[0] || sections[0];
+    for (const s of visibleSections) {
+      if (s.target.offsetTop <= scrollPos) current = s;
+    }
+    for (const s of sections) {
+      const done = isVisible(s.target) && s !== current;
+      s.el.classList.toggle('active', s === current);
+      s.el.classList.toggle('done', done);
+    }
+    const activeItem = sections.find(s => s === current);
+    if (activeItem) {
+      const el = activeItem.el;
+      const navRect = nav.getBoundingClientRect(), elRect = el.getBoundingClientRect();
+      const outOfView = elRect.left < navRect.left || elRect.right > navRect.right;
+      if (outOfView) el.scrollIntoView({ behavior: 'instant', inline: 'nearest', block: 'nearest' });
+    }
+  }
+
+  let ticking = false;
+  function onScroll() {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(() => { updateActive(); ticking = false; });
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onScroll);
+  updateActive();
+})();
 
 </script>
 </body>
